@@ -39,6 +39,7 @@ export const ROUTES = Object.freeze({
     chapters: "/admin/chapters",
     tests: "/admin/tests",
     questions: "/admin/questions",
+    questionBank: "/admin/question-bank",
   },
   legacy: {
     testRoot: "/test",

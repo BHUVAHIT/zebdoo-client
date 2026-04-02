@@ -26,6 +26,9 @@ const TestsManagementPage = lazy(() =>
 const QuestionsManagementPage = lazy(() =>
   import("../../admin/management/pages/QuestionsManagementPage")
 );
+const QuestionBankManagementPage = lazy(() =>
+  import("../../admin/management/pages/QuestionBankManagementPage")
+);
 
 const SuperAdminApp = () => {
   const [metrics, setMetrics] = useState({
@@ -89,6 +92,7 @@ const SuperAdminApp = () => {
             path="questions"
             element={<QuestionsManagementPage onDataChange={refreshMetrics} />}
           />
+          <Route path="question-bank" element={<QuestionBankManagementPage />} />
           <Route path="*" element={<Navigate to={ROUTES.admin.dashboard} replace />} />
         </Routes>
       </Suspense>

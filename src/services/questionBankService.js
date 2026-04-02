@@ -1,11 +1,8 @@
-import { mockCatalog, getQuestionSet } from "../test/services/mockData";
 import {
-  selectCatalogSnapshot,
-  selectChaptersBySubjectId,
-  selectQuestionsByTestId,
-  selectSubjects,
-  selectTestsByChapterId,
-} from "../store/catalogSelectors";
+  getQuestionBankQuestions,
+  getQuestionBankVersion,
+  QUESTION_DIFFICULTY_OPTIONS,
+} from "../store/questionBankStore";
 import { TEST_STORAGE_KEYS } from "../utils/constants";
 import { loadFromStorage, saveToStorage } from "../utils/helpers";
 
@@ -15,9 +12,9 @@ const normalizeId = (value) => String(value || "").trim();
 
 const normalizeDifficulty = (value) => String(value || "").trim().toLowerCase();
 
-const BASE_DIFFICULTIES = mockCatalog.difficulties.map((item) => ({
-  ...item,
-  id: normalizeDifficulty(item.id),
+const BASE_DIFFICULTIES = QUESTION_DIFFICULTY_OPTIONS.map((item) => ({
+  id: normalizeDifficulty(item.value),
+  label: item.label,
 }));
 
 const DIFFICULTY_LABEL_MAP = BASE_DIFFICULTIES.reduce((acc, item) => {
@@ -35,10 +32,8 @@ const writeJournal = (journal) => {
   saveToStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, journal);
 };
 
-const extractOptionLabel = (question, optionId) => {
-  const option = (question.options || []).find(
-    (item) => normalizeId(item.id).toUpperCase() === normalizeId(optionId).toUpperCase()
-  );
+const extractOptionLabel = (options, optionId) => {
+  const option = (options || []).find((item) => item.id === normalizeId(optionId).toUpperCase());
   return option?.text || "";
 };
 
@@ -63,6 +58,106 @@ const dedupeRowsById = (rows = []) => {
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
+  });
+};
+
+const toOptionList = (question = {}) => {
+  const source = Array.isArray(question.options) ? question.options : [];
+
+  return ["A", "B", "C", "D"].map((optionId, index) => ({
+    id: optionId,
+    text:
+      typeof source[index] === "string"
+        ? String(source[index] || "").trim()
+        : String(source[index]?.text || "").trim(),
+  }));
+};
+
+const createFallbackId = (prefix, value, index) => {
+  const cleaned = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (cleaned) {
+    return `${prefix}-${cleaned}`;
+  }
+
+  return `${prefix}-${index + 1}`;
+};
+
+const buildQuestionBankFromStore = () => {
+  const questions = getQuestionBankQuestions();
+  const subjectsById = {};
+  const chaptersBySubject = {};
+
+  const rows = questions.map((question, index) => {
+    const subjectId = normalizeId(
+      question.subjectId || createFallbackId("subject", question.subjectName || question.subject, index)
+    );
+    const subjectName =
+      String(question.subjectName || question.subject || "General").trim() || "General";
+    const chapterId = normalizeId(
+      question.chapterId || createFallbackId("chapter", question.chapterName || question.chapter, index)
+    );
+    const chapterName =
+      String(question.chapterName || question.chapter || "General").trim() || "General";
+
+    subjectsById[subjectId] = {
+      id: subjectId,
+      name: subjectName,
+    };
+
+    chaptersBySubject[subjectId] = chaptersBySubject[subjectId] || {};
+    chaptersBySubject[subjectId][chapterId] = {
+      id: chapterId,
+      name: chapterName,
+      summary: `Question bank coverage for ${chapterName}.`,
+    };
+
+    const options = toOptionList(question);
+    const correctAnswer = normalizeId(question.correctAnswer).toUpperCase();
+    const difficultyId = normalizeDifficulty(question.difficulty);
+
+    return {
+      id: normalizeId(question.id),
+      question: String(question.question || "").trim(),
+      options,
+      correctAnswer,
+      explanation: "",
+      subjectId,
+      chapterId,
+      difficultyId,
+      subjectName,
+      chapterName,
+      difficultyLabel: DIFFICULTY_LABEL_MAP[difficultyId] || "Medium",
+      correctAnswerText: extractOptionLabel(options, correctAnswer),
+    };
+  }).filter((row) => Boolean(row.question));
+
+  const subjects = Object.values(subjectsById)
+    .map((subject) => ({
+      ...subject,
+      chapterCount: Object.keys(chaptersBySubject[subject.id] || {}).length,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  const normalizedChaptersBySubject = Object.entries(chaptersBySubject).reduce(
+    (acc, [subjectId, chapters]) => {
+      acc[subjectId] = Object.values(chapters).sort((left, right) =>
+        left.name.localeCompare(right.name)
+      );
+      return acc;
+    },
+    {}
+  );
+
+  return buildQuestionBankPayload({
+    subjects,
+    difficulties: BASE_DIFFICULTIES,
+    chaptersBySubject: normalizedChaptersBySubject,
+    rows,
   });
 };
 
@@ -108,189 +203,19 @@ const buildQuestionBankPayload = ({ subjects, difficulties, chaptersBySubject, r
   };
 };
 
-const buildFallbackQuestionBank = () => {
-  const rows = [];
-
-  mockCatalog.subjects.forEach((subject) => {
-    const chapters = mockCatalog.chaptersBySubject[subject.id] || [];
-
-    chapters.forEach((chapter) => {
-      mockCatalog.difficulties.forEach((difficulty) => {
-        const set = getQuestionSet({
-          subjectId: subject.id,
-          chapterId: chapter.id,
-          difficultyLevel: difficulty.id,
-        });
-
-        set.forEach((question) => {
-          const normalizedQuestion = {
-            ...question,
-            options: (question.options || []).map((option) => ({
-              ...option,
-              id: normalizeId(option.id).toUpperCase(),
-            })),
-            correctAnswer: normalizeId(question.correctAnswer).toUpperCase(),
-          };
-
-          rows.push({
-            ...normalizedQuestion,
-            subjectId: subject.id,
-            chapterId: chapter.id,
-            difficultyId: normalizeDifficulty(difficulty.id),
-            subjectName: subject.name,
-            chapterName: chapter.name,
-            difficultyLabel: difficulty.label,
-            correctAnswerText: extractOptionLabel(
-              normalizedQuestion,
-              normalizedQuestion.correctAnswer
-            ),
-          });
-        });
-      });
-    });
-  });
-
-  return rows;
-};
-
-const FALLBACK_QUESTION_BANK = buildQuestionBankPayload({
-  subjects: mockCatalog.subjects,
-  difficulties: BASE_DIFFICULTIES,
-  chaptersBySubject: mockCatalog.chaptersBySubject,
-  rows: buildFallbackQuestionBank().sort((left, right) =>
-    left.question.localeCompare(right.question)
-  ),
-});
-
 let questionBankCache = {
   version: -1,
   payload: null,
 };
 
-const buildAdminQuestionBank = (catalogSnapshot = selectCatalogSnapshot()) => {
-  const entities = catalogSnapshot.entities || {};
-
-  const activeSubjects = selectSubjects({
-    activeOnly: true,
-    snapshot: catalogSnapshot,
-  });
-
-  const rows = [];
-  const chapterIdsBySubject = {};
-
-  activeSubjects.forEach((subject) => {
-    const subjectId = normalizeId(subject.id);
-    chapterIdsBySubject[subjectId] = new Set();
-
-    const chapters = selectChaptersBySubjectId(subjectId, {
-      activeOnly: true,
-      requireActiveSubject: true,
-      snapshot: catalogSnapshot,
-    });
-
-    chapters.forEach((chapter) => {
-      const chapterId = normalizeId(chapter.id);
-      chapterIdsBySubject[subjectId].add(chapterId);
-
-      const tests = selectTestsByChapterId(chapterId, {
-        activeOnly: true,
-        publishedOnly: true,
-        requireActiveChapter: true,
-        requireActiveSubject: true,
-        snapshot: catalogSnapshot,
-      });
-
-      tests.forEach((test) => {
-        const difficultyId = normalizeDifficulty(test.difficulty);
-        const testQuestions = selectQuestionsByTestId(test.id, {
-          activeOnly: true,
-          publishedOnly: true,
-          requireActiveTest: true,
-          snapshot: catalogSnapshot,
-        });
-        if (!testQuestions.length) return;
-
-        testQuestions.forEach((question) => {
-          const normalizedOptions = (question.options || []).map((option) => ({
-            ...option,
-            id: normalizeId(option.id).toUpperCase(),
-          }));
-          const correctAnswer = normalizeId(question.correctOptionId || "A").toUpperCase();
-          const normalizedQuestion = {
-            id: normalizeId(question.id),
-            question: String(question.stem || ""),
-            options: normalizedOptions,
-            correctAnswer,
-            explanation: String(question.solution || "").trim(),
-          };
-
-          if (!normalizedQuestion.question) {
-            return;
-          }
-
-          rows.push({
-            ...normalizedQuestion,
-            subjectId,
-            chapterId,
-            difficultyId,
-            subjectName: String(subject.name || "Subject"),
-            chapterName: String(chapter.title || "Chapter"),
-            difficultyLabel:
-              DIFFICULTY_LABEL_MAP[difficultyId] ||
-              String(test.difficulty || "MEDIUM").toUpperCase(),
-            correctAnswerText: extractOptionLabel(normalizedQuestion, correctAnswer),
-          });
-        });
-      });
-    });
-  });
-
-  const subjects = activeSubjects
-    .filter((subject) => chapterIdsBySubject[normalizeId(subject.id)])
-    .map((subject) => ({
-      ...subject,
-      chapterCount: chapterIdsBySubject[normalizeId(subject.id)]?.size || 0,
-    }));
-
-  const chaptersBySubject = Object.entries(chapterIdsBySubject).reduce(
-    (acc, [subjectId, chapterIds]) => {
-      acc[subjectId] = [...chapterIds]
-        .map((chapterId) => entities.chaptersById?.[chapterId])
-        .filter(Boolean)
-        .map((chapter) => ({
-          id: normalizeId(chapter.id),
-          name: String(chapter.title || "Chapter"),
-          summary: `Question bank coverage for ${String(chapter.title || "this chapter")}.`,
-        }));
-      return acc;
-    },
-    {}
-  );
-
-  return buildQuestionBankPayload({
-    subjects,
-    difficulties: BASE_DIFFICULTIES,
-    chaptersBySubject,
-    rows: rows.sort((left, right) => left.question.localeCompare(right.question)),
-  });
-};
-
 const getQuestionBankSource = () => {
-  const catalogSnapshot = selectCatalogSnapshot();
-  const version = Number(catalogSnapshot?.version || 0);
+  const version = Number(getQuestionBankVersion() || 0);
 
   if (questionBankCache.payload && questionBankCache.version === version) {
     return questionBankCache.payload;
   }
 
-  const hasCatalogData =
-    catalogSnapshot.db.subjects.length > 0 ||
-    catalogSnapshot.db.chapters.length > 0 ||
-    catalogSnapshot.db.tests.length > 0 ||
-    catalogSnapshot.db.questions.length > 0;
-
-  const adminQuestionBank = buildAdminQuestionBank(catalogSnapshot);
-  const payload = hasCatalogData ? adminQuestionBank : FALLBACK_QUESTION_BANK;
+  const payload = buildQuestionBankFromStore();
 
   questionBankCache = {
     version,

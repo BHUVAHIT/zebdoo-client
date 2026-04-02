@@ -13,18 +13,17 @@ import {
   getQuestionBankRows,
   updateQuestionBankEntry,
 } from "../../../../services/questionBankService";
-import { useCatalogStore } from "../../../../store/catalogStore";
+import { useQuestionBankStore } from "../../../../store/questionBankStore";
 import { TEST_STORAGE_KEYS } from "../../../../utils/constants";
 import { loadFromStorage, saveToStorage } from "../../../../utils/helpers";
 import FilterSingleSelect from "../components/FilterSingleSelect";
-import FilterMultiSelect from "../components/FilterMultiSelect";
 import QuestionBankCard from "../components/QuestionBankCard";
 import ProgressTracker from "../../../../shared/components/design/ProgressTracker";
 import "../studyQuestionBank.css";
 
 const DEFAULT_FILTER_STATE = Object.freeze({
   subjectId: "",
-  chapterIds: [],
+  chapterId: "",
   difficultyId: "",
   onlyBookmarked: false,
   onlyLearned: false,
@@ -47,15 +46,11 @@ const normalizeFilterState = ({ filters, rawState }) => {
     (filters.chaptersBySubject[safeSubjectId] || []).map((chapter) => chapter.id)
   );
 
-  const safeChapterIds = Array.isArray(next.chapterIds)
-    ? Array.from(
-        new Set(next.chapterIds.filter((chapterId) => chapterIdsForSubject.has(chapterId)))
-      )
-    : [];
+  const safeChapterId = chapterIdsForSubject.has(next.chapterId) ? next.chapterId : "";
 
   return {
     subjectId: safeSubjectId,
-    chapterIds: safeChapterIds,
+    chapterId: safeChapterId,
     difficultyId: difficultyIds.has(next.difficultyId) ? next.difficultyId : "",
     onlyBookmarked: Boolean(next.onlyBookmarked),
     onlyLearned: Boolean(next.onlyLearned),
@@ -66,7 +61,7 @@ const normalizeFilterState = ({ filters, rawState }) => {
 const hasAnyActiveFilter = (state) =>
   Boolean(
     state.subjectId ||
-      state.chapterIds.length ||
+      state.chapterId ||
       state.difficultyId ||
       state.onlyBookmarked ||
       state.onlyLearned ||
@@ -74,7 +69,7 @@ const hasAnyActiveFilter = (state) =>
   );
 
 const StudyQuestionBankPage = () => {
-  useCatalogStore((state) => state.version);
+  useQuestionBankStore((state) => state.version);
   const filters = getQuestionBankFilters();
   const totalQuestionCount = getQuestionBankRows().length;
   const persistedFilterState = useMemo(
@@ -147,7 +142,7 @@ const StudyQuestionBankPage = () => {
     () =>
       getQuestionBankItems({
         subjectId: effectiveFilterState.subjectId,
-        chapterIds: effectiveFilterState.chapterIds,
+        chapterId: effectiveFilterState.chapterId,
         difficultyId: effectiveFilterState.difficultyId,
         onlyBookmarked: effectiveFilterState.onlyBookmarked,
         onlyLearned: effectiveFilterState.onlyLearned,
@@ -156,7 +151,7 @@ const StudyQuestionBankPage = () => {
       }),
     [
       deferredSearchQuery,
-      effectiveFilterState.chapterIds,
+      effectiveFilterState.chapterId,
       effectiveFilterState.difficultyId,
       effectiveFilterState.onlyBookmarked,
       effectiveFilterState.onlyLearned,
@@ -254,18 +249,18 @@ const StudyQuestionBankPage = () => {
       updateFilterState((current) => ({
         ...current,
         subjectId,
-        chapterIds: [],
+        chapterId: "",
       }));
     },
     [resetVisibleWindow, updateFilterState]
   );
 
   const handleChapterChange = useCallback(
-    (chapterIds) => {
+    (chapterId) => {
       resetVisibleWindow();
       updateFilterState((current) => ({
         ...current,
-        chapterIds,
+        chapterId,
       }));
     },
     [resetVisibleWindow, updateFilterState]
@@ -438,11 +433,11 @@ const StudyQuestionBankPage = () => {
             onChange={handleSubjectChange}
           />
 
-          <FilterMultiSelect
+          <FilterSingleSelect
             id="sqb-chapter-filter"
-            label="Chapters"
+            label="Chapter"
             options={chapterOptions}
-            value={effectiveFilterState.chapterIds}
+            value={effectiveFilterState.chapterId}
             placeholder={effectiveFilterState.subjectId ? "All chapters" : "Select a subject first"}
             disabled={!effectiveFilterState.subjectId}
             isOpen={openDropdownKey === "chapter"}
