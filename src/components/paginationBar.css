@@ -1,0 +1,124 @@
+.app-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.app-pagination__meta {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.72);
+  font-size: 0.9rem;
+}
+
+.app-pagination__controls,
+.app-pagination__settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.app-pagination__btn,
+.app-pagination__page,
+.app-pagination__settings select,
+.app-pagination__jump input {
+  border-radius: 0.6rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  background: #fff;
+  color: #0f172a;
+  min-height: 2rem;
+}
+
+.app-pagination__btn,
+.app-pagination__page {
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.app-pagination__btn:disabled,
+.app-pagination__page:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.app-pagination__btn:not(:disabled):hover,
+.app-pagination__page:not(.is-active):hover {
+  border-color: rgba(15, 23, 42, 0.34);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.app-pagination__btn--primary {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+
+.app-pagination__pages {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.app-pagination__page-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.app-pagination__ellipsis {
+  color: rgba(15, 23, 42, 0.5);
+  font-size: 0.78rem;
+}
+
+.app-pagination__page {
+  min-width: 2rem;
+}
+
+.app-pagination__page.is-active {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+
+.app-pagination__settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: rgba(15, 23, 42, 0.78);
+  font-size: 0.86rem;
+}
+
+.app-pagination__settings select,
+.app-pagination__jump input {
+  padding: 0.25rem 0.45rem;
+}
+
+.app-pagination__jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.app-pagination__jump input {
+  width: 4rem;
+}
+
+@media (max-width: 740px) {
+  .app-pagination {
+    align-items: stretch;
+  }
+
+  .app-pagination__controls,
+  .app-pagination__settings {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .app-pagination__meta {
+    width: 100%;
+  }
+}

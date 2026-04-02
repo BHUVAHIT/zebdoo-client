@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+
+.section-title {
+  @apply text-lg font-semibold text-gray-800;
+}
+
+.card-select {
+  @apply p-4 rounded-xl border text-left hover:shadow transition cursor-pointer;
+}
+
+.active-blue {
+  @apply bg-blue-600 text-white border-blue-600;
+}
+
+.active-green {
+  @apply bg-green-600 text-white border-green-600;
+}
+
+.btn-primary {
+  @apply bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg disabled:opacity-50;
+}
+
+.btn-secondary {
+  @apply border px-6 py-2 rounded-lg hover:bg-gray-100;
+}
+
+.btn-danger {
+  @apply bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg;
+}
+
+.option-row {
+  @apply flex items-center gap-3 p-3 border rounded-full cursor-pointer hover:bg-gray-50;
+}
+
+.option-active {
+  @apply border-blue-600 bg-blue-50;
+}
+
+.radio-circle {
+  @apply w-5 h-5 rounded-full border;
+}
+
+.radio-active {
+  @apply bg-blue-600 border-blue-600;
+}

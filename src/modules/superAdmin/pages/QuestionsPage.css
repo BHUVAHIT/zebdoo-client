@@ -1,0 +1,31 @@
+.sa-questions-form-modal {
+  min-height: 0;
+}
+
+.sa-questions-form-modal .sa-form {
+  padding-bottom: 0;
+  gap: 1rem;
+}
+
+.sa-questions-form-modal .sa-form__actions {
+  position: static;
+  margin-top: 0.65rem;
+  padding-top: 0.9rem;
+  padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #e2eaf4;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.sa-questions-form-modal textarea[id^="form-field-option"] {
+  min-height: 3rem;
+  line-height: 1.35;
+  resize: none;
+  overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .sa-questions-form-modal .sa-form {
+    padding-bottom: 0;
+  }
+}
