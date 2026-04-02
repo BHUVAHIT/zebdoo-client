@@ -1464,6 +1464,10 @@
 }
 
 @media (min-width: 900px) {
+  .sa-icon-btn--mobile {
+    display: none;
+  }
+
   .sa-icon-btn--desktop {
     display: inline-flex;
   }

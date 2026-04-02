@@ -203,7 +203,7 @@ const SuperAdminLayout = ({ children }) => {
             <div className="sa-header__left">
               <button
                 type="button"
-                className="sa-icon-btn sa-icon-btn--mobile"
+                className="sa-icon-btn sa-icon-btn--mobile lg:hidden"
                 aria-expanded={mobileOpen}
                 aria-controls="sa-sidebar"
                 aria-label={mobileOpen ? "Close navigation menu" : "Open navigation menu"}
