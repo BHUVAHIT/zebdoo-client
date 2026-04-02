@@ -3,6 +3,7 @@ import {
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import PaginationBar from "../../../../components/PaginationBar";
@@ -15,7 +16,7 @@ import {
 } from "../../../../services/questionBankService";
 import { useQuestionBankStore } from "../../../../store/questionBankStore";
 import { TEST_STORAGE_KEYS } from "../../../../utils/constants";
-import { loadFromStorage, saveToStorage } from "../../../../utils/helpers";
+import { loadScopedFromStorage, saveScopedToStorage } from "../../../../utils/storageScope";
 import FilterSingleSelect from "../components/FilterSingleSelect";
 import QuestionBankCard from "../components/QuestionBankCard";
 import ProgressTracker from "../../../../shared/components/design/ProgressTracker";
@@ -31,6 +32,8 @@ const DEFAULT_FILTER_STATE = Object.freeze({
 });
 
 const DEFAULT_PAGE_SIZE = 20;
+const VIRTUAL_WINDOW_THRESHOLD = 20;
+const VIRTUAL_WINDOW_CHUNK = 20;
 
 const normalizeFilterState = ({ filters, rawState }) => {
   const next = {
@@ -69,13 +72,26 @@ const hasAnyActiveFilter = (state) =>
   );
 
 const StudyQuestionBankPage = () => {
-  useQuestionBankStore((state) => state.version);
-  const filters = getQuestionBankFilters();
-  const totalQuestionCount = getQuestionBankRows().length;
+  const questionBankVersion = useQuestionBankStore((state) => state.version);
+  const filters = useMemo(() => {
+    const _versionHint = questionBankVersion;
+    return getQuestionBankFilters();
+  }, [questionBankVersion]);
+  const totalQuestionCount = useMemo(
+    () => {
+      const _versionHint = questionBankVersion;
+      return getQuestionBankRows().length;
+    },
+    [questionBankVersion]
+  );
   const persistedFilterState = useMemo(
-    () => loadFromStorage(TEST_STORAGE_KEYS.QUESTION_BANK_STATE, DEFAULT_FILTER_STATE),
+    () =>
+      loadScopedFromStorage(TEST_STORAGE_KEYS.QUESTION_BANK_STATE, DEFAULT_FILTER_STATE, {
+        migrateLegacy: false,
+      }),
     []
   );
+  const initialJournal = useMemo(() => getQuestionBankJournal(), []);
 
   const [filterState, setFilterState] = useState(() =>
     normalizeFilterState({
@@ -83,10 +99,9 @@ const StudyQuestionBankPage = () => {
       rawState: persistedFilterState,
     })
   );
-  const [journal, setJournal] = useState(() => getQuestionBankJournal());
+  const [journal, setJournal] = useState(initialJournal);
   const [noteDrafts, setNoteDrafts] = useState(() => {
     const seeded = {};
-    const initialJournal = getQuestionBankJournal();
 
     Object.keys(initialJournal).forEach((key) => {
       const note = String(initialJournal[key]?.note || "");
@@ -99,6 +114,8 @@ const StudyQuestionBankPage = () => {
   const [openDropdownKey, setOpenDropdownKey] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [renderedCardCount, setRenderedCardCount] = useState(DEFAULT_PAGE_SIZE);
+  const virtualSentinelRef = useRef(null);
 
   const effectiveFilterState = useMemo(
     () =>
@@ -172,6 +189,13 @@ const StudyQuestionBankPage = () => {
     return questions.slice(start, start + pageSize);
   }, [pageSize, questions, safeCurrentPage]);
 
+  const useVirtualWindow = visibleQuestions.length > VIRTUAL_WINDOW_THRESHOLD;
+
+  const renderedQuestions = useMemo(() => {
+    if (!useVirtualWindow) return visibleQuestions;
+    return visibleQuestions.slice(0, renderedCardCount);
+  }, [renderedCardCount, useVirtualWindow, visibleQuestions]);
+
   const progressMetrics = useMemo(() => {
     const learnedCount = questions.reduce(
       (acc, question) => acc + (question.isLearned ? 1 : 0),
@@ -192,8 +216,39 @@ const StudyQuestionBankPage = () => {
   const hasActiveFilters = hasAnyActiveFilter(effectiveFilterState);
 
   useEffect(() => {
-    saveToStorage(TEST_STORAGE_KEYS.QUESTION_BANK_STATE, effectiveFilterState);
+    saveScopedToStorage(TEST_STORAGE_KEYS.QUESTION_BANK_STATE, effectiveFilterState);
   }, [effectiveFilterState]);
+
+  useEffect(() => {
+    setRenderedCardCount(Math.min(VIRTUAL_WINDOW_CHUNK, visibleQuestions.length));
+  }, [visibleQuestions]);
+
+  useEffect(() => {
+    if (!useVirtualWindow) return undefined;
+    if (renderedCardCount >= visibleQuestions.length) return undefined;
+
+    const sentinelElement = virtualSentinelRef.current;
+    if (!sentinelElement) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (!first?.isIntersecting) return;
+
+        setRenderedCardCount((current) =>
+          Math.min(current + VIRTUAL_WINDOW_CHUNK, visibleQuestions.length)
+        );
+      },
+      {
+        root: null,
+        rootMargin: "220px 0px",
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinelElement);
+    return () => observer.disconnect();
+  }, [renderedCardCount, useVirtualWindow, visibleQuestions.length]);
 
   const resetVisibleWindow = useCallback(() => {
     setCurrentPage(1);
@@ -498,7 +553,7 @@ const StudyQuestionBankPage = () => {
           </article>
         ) : null}
 
-        {visibleQuestions.map((question, index) => (
+        {renderedQuestions.map((question, index) => (
           <QuestionBankCard
             key={question.id}
             question={question}
@@ -510,6 +565,15 @@ const StudyQuestionBankPage = () => {
             onSaveNote={saveNote}
           />
         ))}
+
+        {useVirtualWindow && renderedCardCount < visibleQuestions.length ? (
+          <>
+            <p className="sqb-list__window-meta" aria-live="polite">
+              Rendering {renderedCardCount} of {visibleQuestions.length} cards
+            </p>
+            <div className="sqb-list__virtual-sentinel" ref={virtualSentinelRef} />
+          </>
+        ) : null}
 
         {questions.length > 0 ? (
           <PaginationBar

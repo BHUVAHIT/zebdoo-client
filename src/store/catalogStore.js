@@ -74,6 +74,7 @@ const readDbFromStorage = () => {
   }
 
   const parsed = parseStoredDb(window.localStorage.getItem(DB_STORAGE_KEY));
+
   if (parsed) {
     return parsed;
   }

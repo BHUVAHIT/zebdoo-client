@@ -4,6 +4,11 @@ import { submitMcqAttempt } from "../services/testService";
 import { useTestFlowStore } from "../store/testFlowStore";
 import { TEST_STORAGE_KEYS } from "../../utils/constants";
 import { loadFromStorage, saveToStorage } from "../../utils/helpers";
+import {
+  loadScopedFromStorage,
+  resolveStorageScopeId,
+  saveScopedToStorage,
+} from "../../utils/storageScope";
 import { ROUTES } from "../../routes/routePaths";
 import { useAppToast } from "../../components/notifications/useAppToast";
 import { syncLearningArtifactsFromAttempt } from "../../services/learningAnalyticsService";
@@ -32,6 +37,7 @@ export const useSubmitAttempt = () => {
         questionNotes,
       } = useTestFlowStore.getState();
       const currentUser = useAuthStore.getState().user;
+      const userScopeId = resolveStorageScopeId(currentUser);
 
       if (!subject || !chapter || !difficulty || !questions.length) {
         throw new Error("Attempt context is incomplete. Please restart the test.");
@@ -49,7 +55,7 @@ export const useSubmitAttempt = () => {
           subjectId: subject.id,
           chapterId: chapter.id,
           difficultyLevel: difficulty.id,
-          userId: currentUser?.id,
+          userId: userScopeId,
           attemptMode,
           smartGoal,
           answers,
@@ -59,15 +65,36 @@ export const useSubmitAttempt = () => {
           questionTimeSpent,
         });
 
-        saveToStorage(TEST_STORAGE_KEYS.LAST_RESULT, result);
+        const scopedResult = {
+          ...result,
+          userId: userScopeId,
+        };
 
-        const previousHistory = loadFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, []);
-        const normalizedHistory = Array.isArray(previousHistory) ? previousHistory : [];
-        const nextHistory = [result, ...normalizedHistory].slice(0, 50);
-        saveToStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, nextHistory);
+        saveScopedToStorage(TEST_STORAGE_KEYS.LAST_RESULT, scopedResult, userScopeId);
+
+        const previousScopedHistory = loadScopedFromStorage(
+          TEST_STORAGE_KEYS.RESULT_HISTORY,
+          [],
+          {
+            scopeId: userScopeId,
+            migrateLegacy: false,
+          }
+        );
+        const normalizedScopedHistory = Array.isArray(previousScopedHistory)
+          ? previousScopedHistory
+          : [];
+        const nextScopedHistory = [scopedResult, ...normalizedScopedHistory].slice(0, 50);
+        saveScopedToStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, nextScopedHistory, userScopeId);
+
+        const previousGlobalHistory = loadFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, []);
+        const normalizedGlobalHistory = Array.isArray(previousGlobalHistory)
+          ? previousGlobalHistory
+          : [];
+        const nextGlobalHistory = [scopedResult, ...normalizedGlobalHistory].slice(0, 500);
+        saveToStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, nextGlobalHistory);
 
         syncLearningArtifactsFromAttempt({
-          result,
+          result: scopedResult,
           questionTimeSpent,
           bookmarkedQuestions,
           questionNotes,
@@ -78,7 +105,7 @@ export const useSubmitAttempt = () => {
 
         pushToast({
           title: "Assessment submitted",
-          message: `Score: ${result.metrics?.scorePercent ?? 0}% (${String(
+          message: `Score: ${scopedResult.metrics?.scorePercent ?? 0}% (${String(
             smartGoal || attemptMode || "exam"
           )
             .replace(/-/g, " ")
@@ -88,7 +115,7 @@ export const useSubmitAttempt = () => {
 
         navigate(ROUTES.assessment.result, {
           state: {
-            result,
+            result: scopedResult,
             autoSubmitted,
           },
           replace: true,

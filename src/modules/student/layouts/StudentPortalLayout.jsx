@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { routeBuilders, ROUTES } from "../../../routes/routePaths";
 import SidebarLogout from "../../../components/SidebarLogout";
@@ -58,6 +58,31 @@ const StudentPortalLayout = ({ children }) => {
   const breadcrumbs = useMemo(() => buildBreadcrumbs(location.pathname), [location.pathname]);
   const studentProfile = useMemo(() => getStudentProfile(user), [user]);
 
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => !prev);
+  }, []);
+
+  const toggleProfileMenu = useCallback(() => {
+    setIsProfileMenuOpen((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+
+    html.classList.add("student-portal-scroll-lock");
+    body.classList.add("student-portal-scroll-lock");
+
+    return () => {
+      html.classList.remove("student-portal-scroll-lock");
+      body.classList.remove("student-portal-scroll-lock");
+    };
+  }, []);
+
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (!menuRef.current || menuRef.current.contains(event.target)) return;
@@ -73,7 +98,7 @@ const StudentPortalLayout = ({ children }) => {
       <button
         type="button"
         className="student-portal-shell__mobile-toggle"
-        onClick={() => setIsSidebarOpen((prev) => !prev)}
+        onClick={toggleSidebar}
       >
         {isSidebarOpen ? "Close" : "Menu"}
       </button>
@@ -92,7 +117,7 @@ const StudentPortalLayout = ({ children }) => {
               className={({ isActive }) =>
                 `student-portal-sidebar__link ${isActive ? "is-active" : ""}`
               }
-              onClick={() => setIsSidebarOpen(false)}
+              onClick={closeSidebar}
             >
               {item.label}
             </NavLink>
@@ -101,7 +126,7 @@ const StudentPortalLayout = ({ children }) => {
 
         <SidebarLogout
           className="student-portal-sidebar__logout"
-          onLoggedOut={() => setIsSidebarOpen(false)}
+          onLoggedOut={closeSidebar}
         />
       </aside>
 
@@ -124,7 +149,7 @@ const StudentPortalLayout = ({ children }) => {
             <button
               type="button"
               className="student-portal-main__identity"
-              onClick={() => setIsProfileMenuOpen((prev) => !prev)}
+              onClick={toggleProfileMenu}
             >
               <span className="student-portal-main__avatar">
                 {studentProfile.avatarUrl ? (

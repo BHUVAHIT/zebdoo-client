@@ -88,6 +88,21 @@ export const useAuthStore = create((set, get) => ({
   },
 
   loadUser: () => {
+    const clearAuthStateIfNeeded = () => {
+      set((state) => {
+        if (
+          state.user === null &&
+          state.token === null &&
+          state.refreshToken === null &&
+          state.sessionExpiresAt === null
+        ) {
+          return state;
+        }
+
+        return { user: null, token: null, refreshToken: null, sessionExpiresAt: null };
+      });
+    };
+
     const token = localStorage.getItem(ACCESS_TOKEN_KEY);
     const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
     const user = localStorage.getItem(USER_KEY);
@@ -96,13 +111,13 @@ export const useAuthStore = create((set, get) => ({
 
     if (!token || !user || !sessionExpiresAt) {
       clearSessionStorage();
-      set({ user: null, token: null, refreshToken: null, sessionExpiresAt: null });
+      clearAuthStateIfNeeded();
       return;
     }
 
     if (Date.now() >= sessionExpiresAt) {
       clearSessionStorage();
-      set({ user: null, token: null, refreshToken: null, sessionExpiresAt: null });
+      clearAuthStateIfNeeded();
       return;
     }
 
@@ -111,14 +126,25 @@ export const useAuthStore = create((set, get) => ({
 
       if (!parsedUser) {
         clearSessionStorage();
-        set({ user: null, token: null, refreshToken: null, sessionExpiresAt: null });
+        clearAuthStateIfNeeded();
+        return;
+      }
+
+      const current = get();
+      const hasSameSnapshot =
+        current.token === token &&
+        current.refreshToken === (refreshToken || null) &&
+        current.sessionExpiresAt === sessionExpiresAt &&
+        JSON.stringify(current.user) === JSON.stringify(parsedUser);
+
+      if (hasSameSnapshot) {
         return;
       }
 
       set({ token, refreshToken, user: parsedUser, sessionExpiresAt });
     } catch {
       clearSessionStorage();
-      set({ user: null, token: null, refreshToken: null, sessionExpiresAt: null });
+      clearAuthStateIfNeeded();
     }
   },
 

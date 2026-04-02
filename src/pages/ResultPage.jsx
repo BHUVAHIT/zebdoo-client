@@ -4,9 +4,13 @@ import { TEST_STORAGE_KEYS } from "../utils/constants";
 import {
   formatSeconds,
   getDisplayDateTime,
-  loadFromStorage,
-  removeFromStorage,
 } from "../utils/helpers";
+import { useAuthStore } from "../store/authStore";
+import {
+  loadScopedFromStorage,
+  removeScopedFromStorage,
+  resolveStorageScopeId,
+} from "../utils/storageScope";
 import { routeBuilders } from "../routes/routePaths";
 import { SMART_TEST_GOALS } from "../test/config/smartTestEngine";
 
@@ -15,9 +19,14 @@ const ResultCard = lazy(() => import("../components/ResultCard"));
 const ResultPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const currentUser = useAuthStore((state) => state.user);
+  const scopeId = resolveStorageScopeId(currentUser);
 
   const routeResult = location.state?.result || null;
-  const persistedResult = loadFromStorage(TEST_STORAGE_KEYS.LAST_RESULT);
+  const persistedResult = loadScopedFromStorage(TEST_STORAGE_KEYS.LAST_RESULT, null, {
+    scopeId,
+    migrateLegacy: false,
+  });
   const result = routeResult || persistedResult;
   const autoSubmitted = Boolean(location.state?.autoSubmitted);
 
@@ -65,7 +74,7 @@ const ResultPage = () => {
   }, [metrics, result?.timeTakenSeconds]);
 
   const retakeTest = () => {
-    removeFromStorage(TEST_STORAGE_KEYS.LAST_RESULT);
+    removeScopedFromStorage(TEST_STORAGE_KEYS.LAST_RESULT, scopeId);
     navigate(routeBuilders.assessmentSession.root);
   };
 

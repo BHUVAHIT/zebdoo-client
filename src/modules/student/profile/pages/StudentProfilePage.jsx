@@ -8,7 +8,10 @@ import {
   saveStudentProfile,
 } from "../../../../services/studentProfileService";
 import { TEST_STORAGE_KEYS } from "../../../../utils/constants";
-import { loadFromStorage } from "../../../../utils/helpers";
+import {
+  loadScopedFromStorage,
+  resolveStorageScopeId,
+} from "../../../../utils/storageScope";
 import "../studentProfile.css";
 
 const MAX_AVATAR_SIZE_BYTES = 3 * 1024 * 1024;
@@ -64,7 +67,10 @@ const StudentProfilePage = () => {
   );
 
   const stats = useMemo(() => {
-    const history = loadFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, []);
+    const history = loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+      scopeId: resolveStorageScopeId(user),
+      migrateLegacy: false,
+    });
     const normalizedHistory = Array.isArray(history) ? history : [];
     const analytics = getLearningProfile();
 
@@ -75,7 +81,7 @@ const StudentProfilePage = () => {
       streakDays: analytics?.streakDays || 0,
       xp: analytics?.xp?.totalXp || 0,
     };
-  }, []);
+  }, [user]);
 
   const isEditRequested = searchParams.get("edit") === "1";
   const displayName = profile.name?.trim() || "Student";

@@ -88,6 +88,7 @@ const SuperAdminLayout = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMobileOpen(false);
     setProfileMenuOpen(false);
   }, [location.key]);

@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { TEST_STORAGE_KEYS } from "../utils/constants";
 import {
-  loadFromStorage,
-  removeFromStorage,
-  saveToStorage,
   toQuestionId,
 } from "../utils/helpers";
+import {
+  loadScopedFromStorage,
+  removeScopedFromStorage,
+  resolveStorageScopeId,
+  saveScopedToStorage,
+} from "../utils/storageScope";
+import { useAuthStore } from "../store/authStore";
 
 const initialState = {
   subject: null,
@@ -178,7 +182,9 @@ export const useTestEngine = ({ onTimeout } = {}) => {
   useEffect(() => {
     if (!hasQuestions) return;
 
-    saveToStorage(TEST_STORAGE_KEYS.SESSION, {
+    const scopeId = resolveStorageScopeId(useAuthStore.getState().user);
+
+    saveScopedToStorage(TEST_STORAGE_KEYS.SESSION, {
       subject,
       questions,
       currentIndex,
@@ -187,7 +193,7 @@ export const useTestEngine = ({ onTimeout } = {}) => {
       markedForReview,
       timer,
       savedAt: new Date().toISOString(),
-    });
+    }, scopeId);
   }, [
     answers,
     currentIndex,
@@ -200,7 +206,11 @@ export const useTestEngine = ({ onTimeout } = {}) => {
   ]);
 
   const loadSession = useCallback(() => {
-    const session = loadFromStorage(TEST_STORAGE_KEYS.SESSION);
+    const scopeId = resolveStorageScopeId(useAuthStore.getState().user);
+    const session = loadScopedFromStorage(TEST_STORAGE_KEYS.SESSION, null, {
+      scopeId,
+      migrateLegacy: false,
+    });
     if (!session?.questions?.length) return null;
 
     const remaining = Math.max(
@@ -209,7 +219,7 @@ export const useTestEngine = ({ onTimeout } = {}) => {
     );
 
     if (remaining <= 0) {
-      removeFromStorage(TEST_STORAGE_KEYS.SESSION);
+      removeScopedFromStorage(TEST_STORAGE_KEYS.SESSION, scopeId);
       return null;
     }
 
@@ -278,12 +288,14 @@ export const useTestEngine = ({ onTimeout } = {}) => {
   }, []);
 
   const resetTest = useCallback(() => {
-    removeFromStorage(TEST_STORAGE_KEYS.SESSION);
+    const scopeId = resolveStorageScopeId(useAuthStore.getState().user);
+    removeScopedFromStorage(TEST_STORAGE_KEYS.SESSION, scopeId);
     dispatch({ type: "RESET_TEST" });
   }, []);
 
   const clearSavedSession = useCallback(() => {
-    removeFromStorage(TEST_STORAGE_KEYS.SESSION);
+    const scopeId = resolveStorageScopeId(useAuthStore.getState().user);
+    removeScopedFromStorage(TEST_STORAGE_KEYS.SESSION, scopeId);
   }, []);
 
   return {

@@ -11,12 +11,14 @@ import {
   buildAttemptTestId,
   normalizeAttemptStatus,
 } from "../utils/attemptResume";
+import { resolveStorageScopeId } from "../../utils/storageScope";
 
 const STORAGE_KEY = "mcq:test:flow:v2";
 
 const DEFAULT_PAGE_SIZE = 5;
 
 const DEFAULT_ATTEMPT_MODE = TEST_MODES.EXAM;
+const getActiveScopeId = () => resolveStorageScopeId();
 
 const getDefaultTimer = () => ({
   durationSeconds: 0,
@@ -158,6 +160,21 @@ const hasValidPersistedInProgressAttempt = (state) => {
 };
 
 const sanitizeHydratedFlowState = (state) => {
+  const activeScopeId = getActiveScopeId();
+  if (normalizeId(state.ownerScopeId) !== normalizeId(activeScopeId)) {
+    return {
+      ...clearAttemptArtifacts(
+        {
+          ...state,
+          ownerScopeId: activeScopeId,
+        },
+        ATTEMPT_STATUS.IDLE
+      ),
+      ownerScopeId: activeScopeId,
+      attemptTestId: "",
+    };
+  }
+
   const nextAttemptMode = state.attemptMode || DEFAULT_ATTEMPT_MODE;
   const nextSmartGoal = normalizeSmartGoal(
     state.smartGoal,
@@ -192,6 +209,7 @@ const sanitizeHydratedFlowState = (state) => {
 };
 
 const initialState = {
+  ownerScopeId: getActiveScopeId(),
   subject: null,
   chapter: null,
   difficulty: null,
@@ -691,6 +709,7 @@ export const useTestFlowStore = create(
     {
       name: STORAGE_KEY,
       partialize: (state) => ({
+        ownerScopeId: state.ownerScopeId,
         subject: state.subject,
         chapter: state.chapter,
         difficulty: state.difficulty,
@@ -714,7 +733,7 @@ export const useTestFlowStore = create(
         timer: state.timer,
         tabSwitchCount: state.tabSwitchCount,
       }),
-      version: 5,
+      version: 6,
       storage: safePersistStorage,
       merge: (persistedState, currentState) =>
         sanitizeHydratedFlowState({

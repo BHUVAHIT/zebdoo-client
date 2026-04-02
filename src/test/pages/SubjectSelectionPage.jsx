@@ -163,6 +163,7 @@ const SubjectSelectionPage = () => {
     loadSubjects();
   }, [catalogVersion, loadSubjects]);
 
+
   return (
     <section className="mcq-step-page">
       <TestStepHeader

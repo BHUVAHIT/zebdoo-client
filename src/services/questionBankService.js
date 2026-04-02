@@ -4,7 +4,7 @@ import {
   QUESTION_DIFFICULTY_OPTIONS,
 } from "../store/questionBankStore";
 import { TEST_STORAGE_KEYS } from "../utils/constants";
-import { loadFromStorage, saveToStorage } from "../utils/helpers";
+import { loadScopedFromStorage, resolveStorageScopeId, saveScopedToStorage } from "../utils/storageScope";
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -23,13 +23,15 @@ const DIFFICULTY_LABEL_MAP = BASE_DIFFICULTIES.reduce((acc, item) => {
 }, {});
 
 const readJournal = () => {
-  const raw = loadFromStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, {});
+  const raw = loadScopedFromStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, {}, {
+    migrateLegacy: false,
+  });
   if (!raw || typeof raw !== "object") return {};
   return raw;
 };
 
 const writeJournal = (journal) => {
-  saveToStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, journal);
+  saveScopedToStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, journal);
 };
 
 const extractOptionLabel = (options, optionId) => {
@@ -41,10 +43,13 @@ const buildSearchableText = (row) =>
   [
     row.question,
     row.subjectName,
+    row.subjectCode,
     row.chapterName,
+    row.testTitle,
     row.difficultyLabel,
     row.correctAnswerText,
     row.explanation,
+    ...(Array.isArray(row.tags) ? row.tags : []),
     ...(row.options || []).map((option) => option.text),
   ]
     .join(" ")
@@ -231,11 +236,15 @@ const EMPTY_ENTRY = Object.freeze({
   note: "",
 });
 
-export const getQuestionBankFilters = () => ({
-  subjects: getQuestionBankSource().subjects,
-  difficulties: getQuestionBankSource().difficulties,
-  chaptersBySubject: getQuestionBankSource().chaptersBySubject,
-});
+export const getQuestionBankFilters = () => {
+  const source = getQuestionBankSource();
+
+  return {
+    subjects: source.subjects,
+    difficulties: source.difficulties,
+    chaptersBySubject: source.chaptersBySubject,
+  };
+};
 
 export const getQuestionBankRows = () => getQuestionBankSource().rows;
 
@@ -349,9 +358,11 @@ export const updateQuestionBankEntry = ({
 }) => {
   const key = String(questionId);
   const journal = readJournal();
+  const scopeId = resolveStorageScopeId();
 
   const current = journal[key] || {
     questionId: key,
+    userId: scopeId,
     subjectId: normalize(subjectId),
     chapterId: normalize(chapterId),
     totalAttempts: 0,
@@ -366,6 +377,7 @@ export const updateQuestionBankEntry = ({
 
   journal[key] = {
     ...current,
+    userId: scopeId,
     ...patch,
     note: String(patch?.note ?? current.note ?? "").trim(),
     updatedAt: new Date().toISOString(),

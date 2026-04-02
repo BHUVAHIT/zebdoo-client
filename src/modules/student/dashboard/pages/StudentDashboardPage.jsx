@@ -3,8 +3,13 @@ import { Link } from "react-router-dom";
 import { getSubjects } from "../../../../test/services/testService";
 import { routeBuilders, ROUTES } from "../../../../routes/routePaths";
 import { useCatalogStore } from "../../../../store/catalogStore";
+import { useAuthStore } from "../../../../store/authStore";
 import { TEST_STORAGE_KEYS } from "../../../../utils/constants";
-import { getDisplayDateTime, loadFromStorage } from "../../../../utils/helpers";
+import { getDisplayDateTime } from "../../../../utils/helpers";
+import {
+  loadScopedFromStorage,
+  resolveStorageScopeId,
+} from "../../../../utils/storageScope";
 import {
   computeLearningProfile,
   getLearningProfile,
@@ -14,6 +19,7 @@ import "../studentDashboard.css";
 
 const StudentDashboardPage = () => {
   const catalogVersion = useCatalogStore((state) => state.version);
+  const currentUser = useAuthStore((state) => state.user);
   const [subjects, setSubjects] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
   const [subjectError, setSubjectError] = useState("");
@@ -34,7 +40,10 @@ const StudentDashboardPage = () => {
       setLoadingSubjects(false);
     }
 
-    const rawHistory = loadFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, []);
+    const rawHistory = loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+      scopeId: resolveStorageScopeId(currentUser),
+      migrateLegacy: false,
+    });
     const normalizedHistory = Array.isArray(rawHistory) ? rawHistory : [];
     const orderedHistory = [...normalizedHistory].sort(
       (left, right) => new Date(right.submittedAt || 0) - new Date(left.submittedAt || 0)
@@ -42,7 +51,7 @@ const StudentDashboardPage = () => {
 
     setHistory(orderedHistory);
     setLearningProfile(computeLearningProfile(orderedHistory));
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     loadDashboardData();

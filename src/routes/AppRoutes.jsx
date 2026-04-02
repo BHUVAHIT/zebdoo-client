@@ -82,6 +82,10 @@ const AppRoutes = () => {
   }, [loadUser]);
 
   useEffect(() => {
+    if (!token) {
+      return undefined;
+    }
+
     const intervalId = window.setInterval(() => {
       loadUser();
     }, 60 * 1000);
@@ -89,7 +93,7 @@ const AppRoutes = () => {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [loadUser]);
+  }, [loadUser, token]);
 
   useEffect(() => {
     if (!token) return;

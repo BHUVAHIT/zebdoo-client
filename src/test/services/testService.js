@@ -1,4 +1,3 @@
-import { getQuestionSet, mockCatalog } from "./mockData";
 import {
   getQuestionJournalSnapshot,
   getRevisionQuestionPool,
@@ -25,7 +24,34 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const DIFFICULTY_IDS = ["easy", "medium", "hard"];
 const OPTION_IDS = ["A", "B", "C", "D"];
 
-const DIFFICULTY_META_MAP = mockCatalog.difficulties.reduce((acc, item) => {
+const DIFFICULTY_CATALOG = Object.freeze([
+  {
+    id: "easy",
+    label: "Easy",
+    colorToken: "easy",
+    questionCount: 25,
+    durationSeconds: 18 * 60,
+    detail: "Core conceptual questions with direct application.",
+  },
+  {
+    id: "medium",
+    label: "Medium",
+    colorToken: "medium",
+    questionCount: 30,
+    durationSeconds: 24 * 60,
+    detail: "Scenario-based and mixed conceptual-computation set.",
+  },
+  {
+    id: "hard",
+    label: "Hard",
+    colorToken: "hard",
+    questionCount: 35,
+    durationSeconds: 30 * 60,
+    detail: "Exam-level integrated problems and edge case treatment.",
+  },
+]);
+
+const DIFFICULTY_META_MAP = DIFFICULTY_CATALOG.reduce((acc, item) => {
   acc[String(item.id || "").toLowerCase()] = item;
   return acc;
 }, {});
@@ -63,51 +89,6 @@ const normalizeQuestionOptions = (options = []) => {
 const getDifficultyMeta = (difficultyId) =>
   DIFFICULTY_META_MAP[String(difficultyId || "").toLowerCase()] || null;
 
-const buildGeneratedQuestionSet = ({
-  subjectId,
-  subjectName,
-  chapterId,
-  chapterName,
-  difficultyId,
-  count,
-}) => {
-  const total = Math.max(Number(count) || 0, 1);
-  const difficultyLabel = String(difficultyId || "medium").toUpperCase();
-
-  return Array.from({ length: total }, (_, index) => {
-    const serial = index + 1;
-
-    return {
-      id: `generated:${subjectId}:${chapterId}:${difficultyId}:${serial}`,
-      question:
-        `${serial}. ${subjectName} | ${chapterName} | ${difficultyLabel} simulation question ${serial}. ` +
-        "Select the most accurate compliance-focused option.",
-      options: [
-        {
-          id: "A",
-          text: `Compliant treatment for ${chapterName} with balanced ${difficultyLabel} difficulty coverage.`,
-        },
-        {
-          id: "B",
-          text: "Partially correct interpretation that misses a mandatory control point.",
-        },
-        {
-          id: "C",
-          text: "Common exam trap based on outdated assumptions.",
-        },
-        {
-          id: "D",
-          text: "Incorrect classification that conflicts with chapter constraints.",
-        },
-      ],
-      correctAnswer: "A",
-      explanation:
-        `Use the ${chapterName} objective and verify all rule constraints before selecting the answer. ` +
-        "Option A is intentionally set as the baseline-compliant response.",
-    };
-  });
-};
-
 const toShortCode = (name = "") => {
   const compact = String(name)
     .replace(/[^a-zA-Z0-9 ]/g, " ")
@@ -126,37 +107,6 @@ const toShortCode = (name = "") => {
     .map((token) => token[0])
     .join("")
     .toUpperCase();
-};
-
-const buildMockCatalogSnapshot = () => {
-  const testsByChapterDifficulty = {};
-
-  mockCatalog.subjects.forEach((subject) => {
-    const chapters = mockCatalog.chaptersBySubject[subject.id] || [];
-    chapters.forEach((chapter) => {
-      mockCatalog.difficulties.forEach((difficulty) => {
-        testsByChapterDifficulty[
-          chapterDifficultyKey(subject.id, chapter.id, difficulty.id)
-        ] = {
-          testId: null,
-          questionCount: difficulty.questionCount,
-          durationSeconds: difficulty.durationSeconds,
-        };
-      });
-    });
-  });
-
-  return {
-    source: "mock",
-    subjects: mockCatalog.subjects.map((subject) => ({
-      ...subject,
-      chapterCount: mockCatalog.chaptersBySubject[subject.id]?.length ?? 0,
-    })),
-    chaptersBySubject: clone(mockCatalog.chaptersBySubject),
-    difficulties: clone(mockCatalog.difficulties),
-    testsByChapterDifficulty,
-    questionsByTest: {},
-  };
 };
 
 const buildAdminCatalogSnapshot = (catalogSnapshot = selectCatalogSnapshot()) => {
@@ -182,6 +132,7 @@ const buildAdminCatalogSnapshot = (catalogSnapshot = selectCatalogSnapshot()) =>
 
   const chaptersBySubject = {};
   const testsByChapterDifficulty = {};
+  const testsById = {};
   const questionsByTest = {};
 
   activeSubjects.forEach((subject) => {
@@ -227,6 +178,13 @@ const buildAdminCatalogSnapshot = (catalogSnapshot = selectCatalogSnapshot()) =>
         }
 
         const testId = String(test.id);
+        testsById[testId] = {
+          id: testId,
+          title: String(test.title || "Test"),
+          subjectId,
+          chapterId,
+          difficultyId,
+        };
         const difficultyMeta = getDifficultyMeta(difficultyId);
         const fallbackQuestionCount = Number(difficultyMeta?.questionCount || 20);
         const fallbackDurationSeconds = Number(difficultyMeta?.durationSeconds || 20 * 60);
@@ -296,8 +254,9 @@ const buildAdminCatalogSnapshot = (catalogSnapshot = selectCatalogSnapshot()) =>
     source: "admin",
     subjects,
     chaptersBySubject,
-    difficulties: clone(mockCatalog.difficulties),
+    difficulties: clone(DIFFICULTY_CATALOG),
     testsByChapterDifficulty,
+    testsById,
     questionsByTest,
   };
 };
@@ -310,32 +269,13 @@ const getCatalogSnapshot = async () => {
     return adminCatalogCache.value;
   }
 
-  const hasCatalogData =
-    catalogSnapshot.db.subjects.length > 0 ||
-    catalogSnapshot.db.chapters.length > 0 ||
-    catalogSnapshot.db.tests.length > 0 ||
-    catalogSnapshot.db.questions.length > 0;
-
-  try {
-    if (hasCatalogData) {
-      const adminSnapshot = buildAdminCatalogSnapshot(catalogSnapshot);
-      adminCatalogCache = {
-        value: adminSnapshot,
-        version,
-      };
-      return adminSnapshot;
-    }
-  } catch {
-    // Ignore admin source errors and fallback to static mock catalog.
-  }
-
-  const fallbackSnapshot = buildMockCatalogSnapshot();
+  const adminSnapshot = buildAdminCatalogSnapshot(catalogSnapshot);
   adminCatalogCache = {
-    value: fallbackSnapshot,
+    value: adminSnapshot,
     version,
   };
 
-  return fallbackSnapshot;
+  return adminSnapshot;
 };
 
 const findSubject = (catalog, subjectId) =>
@@ -348,6 +288,28 @@ const findChapter = (catalog, subjectId, chapterId) =>
 
 const findDifficulty = (catalog, difficultyId) =>
   (catalog.difficulties || []).find((item) => item.id === String(difficultyId));
+
+const resolveDifficultyLevels = (catalog, { subjectId, chapterId } = {}) =>
+  (catalog.difficulties || []).map((level) => {
+    const bucket =
+      subjectId && chapterId
+        ? catalog.testsByChapterDifficulty[
+            chapterDifficultyKey(subjectId, chapterId, level.id)
+          ]
+        : null;
+
+    const isAvailable =
+      !subjectId || !chapterId
+        ? true
+        : Number(bucket?.questionCount || 0) > 0 || catalog.source !== "admin";
+
+    return {
+      ...level,
+      questionCount: Number(bucket?.questionCount || level.questionCount),
+      durationSeconds: Number(bucket?.durationSeconds || level.durationSeconds),
+      isAvailable,
+    };
+  });
 
 const mapQuestionInsights = (questions, { subjectId, chapterId }) => {
   const journal = getQuestionJournalSnapshot();
@@ -382,13 +344,10 @@ const buildModeAwareQuestionSet = ({
   sourceQuestionSet,
   subjectId,
   chapterId,
-  difficultyLevel,
   goalProfile,
   questionCount,
 }) => {
-  const fullSet = Array.isArray(sourceQuestionSet)
-    ? sourceQuestionSet
-    : getQuestionSet({ subjectId, chapterId, difficultyLevel });
+  const fullSet = Array.isArray(sourceQuestionSet) ? sourceQuestionSet : [];
 
   const constrained = Number.isFinite(Number(questionCount))
     ? fullSet.slice(0, Math.max(Number(questionCount), 1))
@@ -432,25 +391,27 @@ const getQuestionSourceSet = ({
     return maxQuestions > 0 ? source.slice(0, maxQuestions) : source;
   }
 
-  if (catalog.source === "admin" && bucket?.testId) {
-    const subject = findSubject(catalog, subjectId);
-    const chapter = findChapter(catalog, subjectId, chapterId);
+  const chapterDifficultyPool = Object.values(catalog.testsById || {})
+    .filter(
+      (test) =>
+        String(test.subjectId) === String(subjectId) &&
+        String(test.chapterId) === String(chapterId) &&
+        normalizeDifficultyId(test.difficultyId) === normalizeDifficultyId(difficultyLevel)
+    )
+    .flatMap((test) => catalog.questionsByTest[test.id] || []);
 
-    return buildGeneratedQuestionSet({
-      subjectId: String(subjectId),
-      subjectName: String(subject?.name || "Subject"),
-      chapterId: String(chapterId),
-      chapterName: String(chapter?.name || "Chapter"),
-      difficultyId: normalizeDifficultyId(difficultyLevel),
-      count: Number(questionCount || bucket.questionCount || 0),
-    });
+  if (chapterDifficultyPool.length) {
+    const maxQuestions = Number(questionCount || bucket?.questionCount || 0);
+    return maxQuestions > 0
+      ? chapterDifficultyPool.slice(0, maxQuestions)
+      : chapterDifficultyPool;
   }
 
   if (catalog.source === "admin") {
     return [];
   }
 
-  return getQuestionSet({ subjectId, chapterId, difficultyLevel });
+  return [];
 };
 
 const evaluateQuestions = (questions, answers = {}) => {
@@ -532,28 +493,7 @@ export const getChapterById = async (subjectId, chapterId) => {
 export const getDifficultyLevels = async ({ subjectId, chapterId } = {}) => {
   const catalog = await getCatalogSnapshot();
 
-  return withNetwork(() =>
-    (catalog.difficulties || []).map((level) => {
-      const bucket =
-        subjectId && chapterId
-          ? catalog.testsByChapterDifficulty[
-              chapterDifficultyKey(subjectId, chapterId, level.id)
-            ]
-          : null;
-
-      const isAvailable =
-        !subjectId || !chapterId
-          ? true
-          : Number(bucket?.questionCount || 0) > 0 || catalog.source !== "admin";
-
-      return {
-        ...level,
-        questionCount: Number(bucket?.questionCount || level.questionCount),
-        durationSeconds: Number(bucket?.durationSeconds || level.durationSeconds),
-        isAvailable,
-      };
-    })
-  );
+  return withNetwork(() => resolveDifficultyLevels(catalog, { subjectId, chapterId }));
 };
 
 export const getMcqQuestions = async ({
@@ -566,7 +506,7 @@ export const getMcqQuestions = async ({
   const catalog = await getCatalogSnapshot();
   const subject = findSubject(catalog, subjectId);
   const chapter = findChapter(catalog, subjectId, chapterId);
-  const availableDifficulties = await getDifficultyLevels({ subjectId, chapterId });
+  const availableDifficulties = resolveDifficultyLevels(catalog, { subjectId, chapterId });
   const difficulty = availableDifficulties.find((item) => item.id === String(difficultyLevel));
 
   const resolvedGoal = normalizeSmartGoal(
@@ -619,7 +559,6 @@ export const getMcqQuestions = async ({
         sourceQuestionSet,
         subjectId: subject.id,
         chapterId: chapter.id,
-        difficultyLevel,
         goalProfile,
         questionCount: difficulty.questionCount,
       }),

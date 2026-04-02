@@ -1,5 +1,8 @@
 import { TEST_MODES, TEST_STORAGE_KEYS } from "../utils/constants";
-import { loadFromStorage, saveToStorage } from "../utils/helpers";
+import {
+  loadScopedFromStorage,
+  saveScopedToStorage,
+} from "../utils/storageScope";
 
 const DIFFICULTY_ORDER = ["easy", "medium", "hard"];
 const MILLIS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -53,7 +56,9 @@ const createTopicKey = (subjectId, chapterId) => `${subjectId || "unknown"}::${c
 const normalizeDifficulty = (difficultyId) => String(difficultyId || "").trim().toLowerCase();
 
 const readHistory = () => {
-  const raw = loadFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, []);
+  const raw = loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+    migrateLegacy: false,
+  });
   if (!Array.isArray(raw)) return [];
 
   return raw
@@ -69,13 +74,15 @@ const readHistory = () => {
 };
 
 const readQuestionJournal = () => {
-  const raw = loadFromStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, {});
+  const raw = loadScopedFromStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, {}, {
+    migrateLegacy: false,
+  });
   if (!raw || typeof raw !== "object") return {};
   return raw;
 };
 
 const writeQuestionJournal = (journal) => {
-  saveToStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, journal);
+  saveScopedToStorage(TEST_STORAGE_KEYS.QUESTION_JOURNAL, journal);
 };
 
 const collectStreak = (history) => {
@@ -348,12 +355,14 @@ export const computeLearningProfile = (history = readHistory()) => {
     suggestedTests: buildSuggestedTests(weakTopics),
   };
 
-  saveToStorage(TEST_STORAGE_KEYS.LEARNING_PROFILE, profile);
+  saveScopedToStorage(TEST_STORAGE_KEYS.LEARNING_PROFILE, profile);
   return profile;
 };
 
 export const getLearningProfile = () => {
-  const stored = loadFromStorage(TEST_STORAGE_KEYS.LEARNING_PROFILE, null);
+  const stored = loadScopedFromStorage(TEST_STORAGE_KEYS.LEARNING_PROFILE, null, {
+    migrateLegacy: false,
+  });
   if (stored && stored.generatedAt) {
     return stored;
   }
@@ -542,7 +551,9 @@ export const syncLearningArtifactsFromAttempt = ({
 };
 
 export const getAttemptPreferences = () => {
-  const raw = loadFromStorage(TEST_STORAGE_KEYS.ATTEMPT_PREFERENCES, {});
+  const raw = loadScopedFromStorage(TEST_STORAGE_KEYS.ATTEMPT_PREFERENCES, {}, {
+    migrateLegacy: false,
+  });
   if (!raw || typeof raw !== "object") {
     return {
       preferredMode: TEST_MODES.PRACTICE,
@@ -557,7 +568,7 @@ export const getAttemptPreferences = () => {
 };
 
 export const saveAttemptPreferences = ({ preferredMode, preferredDifficulty }) => {
-  saveToStorage(TEST_STORAGE_KEYS.ATTEMPT_PREFERENCES, {
+  saveScopedToStorage(TEST_STORAGE_KEYS.ATTEMPT_PREFERENCES, {
     preferredMode,
     preferredDifficulty,
     updatedAt: new Date().toISOString(),
