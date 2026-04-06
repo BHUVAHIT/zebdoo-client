@@ -23,7 +23,6 @@ export const ROUTES = Object.freeze({
   student: {
     dashboard: "/dashboard",
     profile: "/student/profile",
-    questionBank: "/student/question-bank",
   },
   assessment: {
     root: "/assessment",

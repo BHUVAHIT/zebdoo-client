@@ -12,7 +12,6 @@ import "./studentPortalLayout.css";
 const NAV_ITEMS = [
   { label: "Dashboard", to: ROUTES.student.dashboard },
   { label: "Assessment Session", to: routeBuilders.assessmentSession.root },
-  { label: "Question Bank", to: ROUTES.student.questionBank },
   { label: "Profile", to: ROUTES.student.profile },
   { label: "Assessment Results", to: ROUTES.assessment.result },
 ];
@@ -28,7 +27,6 @@ const SEGMENT_LABELS = {
   preview: "Preview",
   student: "Student",
   profile: "Profile",
-  "question-bank": "Question Bank",
 };
 
 const buildBreadcrumbs = (pathname) => {

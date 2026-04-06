@@ -6,7 +6,6 @@ export const TEST_STORAGE_KEYS = {
   QUESTION_JOURNAL: "mcq:test:question-journal:v1",
   ATTEMPT_PREFERENCES: "mcq:test:attempt-preferences:v1",
   STUDENT_PROFILE: "mcq:student:profile:v1",
-  QUESTION_BANK_STATE: "mcq:question-bank:state:v1",
 };
 
 export const TEST_MODES = Object.freeze({
