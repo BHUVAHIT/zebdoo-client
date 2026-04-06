@@ -23,6 +23,7 @@ export const ROUTES = Object.freeze({
   student: {
     dashboard: "/dashboard",
     profile: "/student/profile",
+    testPapersRoot: "/test-papers",
   },
   assessment: {
     root: "/assessment",
@@ -39,6 +40,9 @@ export const ROUTES = Object.freeze({
     tests: "/admin/tests",
     questions: "/admin/questions",
     questionBank: "/admin/question-bank",
+    testPapers: "/admin/test-papers",
+    testPapersCreate: "/admin/test-papers/create",
+    testPapersEdit: "/admin/test-papers/edit/:id",
   },
   legacy: {
     testRoot: "/test",
@@ -57,6 +61,16 @@ export const routeBuilders = {
       `${ROUTES.assessment.sessionRoot}/${subjectId}/${chapterId}/${difficultyLevel}/attempt`,
     preview: (subjectId, chapterId, difficultyLevel) =>
       `${ROUTES.assessment.sessionRoot}/${subjectId}/${chapterId}/${difficultyLevel}/preview`,
+  },
+  testPapers: {
+    root: ROUTES.student.testPapersRoot,
+    subject: (subjectId) => `${ROUTES.student.testPapersRoot}/${subjectId}`,
+    mode: (subjectId, mode) => `${ROUTES.student.testPapersRoot}/${subjectId}/${mode}`,
+    chapter: (subjectId, mode, chapterId) =>
+      `${ROUTES.student.testPapersRoot}/${subjectId}/${mode}/${chapterId}`,
+  },
+  admin: {
+    testPapersEdit: (id) => `${ROUTES.admin.testPapers}/edit/${id}`,
   },
 };
 

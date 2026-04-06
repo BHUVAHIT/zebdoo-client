@@ -29,6 +29,8 @@ const QuestionsManagementPage = lazy(() =>
 const QuestionBankManagementPage = lazy(() =>
   import("../../admin/management/pages/QuestionBankManagementPage")
 );
+const ManageTestPapersPage = lazy(() => import("../../../admin-pages/ManageTestPapersPage"));
+const AddEditTestPaperForm = lazy(() => import("../../../admin-pages/AddEditTestPaperForm"));
 
 const SuperAdminApp = () => {
   const [metrics, setMetrics] = useState({
@@ -88,6 +90,9 @@ const SuperAdminApp = () => {
             element={<ChaptersManagementPage onDataChange={refreshMetrics} />}
           />
           <Route path="tests" element={<TestsManagementPage onDataChange={refreshMetrics} />} />
+          <Route path="test-papers" element={<ManageTestPapersPage />} />
+          <Route path="test-papers/create" element={<AddEditTestPaperForm />} />
+          <Route path="test-papers/edit/:id" element={<AddEditTestPaperForm />} />
           <Route
             path="questions"
             element={<QuestionsManagementPage onDataChange={refreshMetrics} />}

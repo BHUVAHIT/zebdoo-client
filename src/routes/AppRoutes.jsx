@@ -37,6 +37,9 @@ const AssessmentResultPage = lazy(() =>
   import("../modules/assessment/pages/AssessmentResultPage")
 );
 const SuperAdminApp = lazy(() => import("../modules/superAdmin/pages/SuperAdminApp"));
+const TestPaperSubjectsPage = lazy(() => import("../pages/TestPaperSubjectsPage"));
+const TestPaperChaptersPage = lazy(() => import("../pages/TestPaperChaptersPage"));
+const TestPaperListPage = lazy(() => import("../pages/TestPaperListPage"));
 
 const LegacyPrefixRedirect = ({ legacyPrefix, targetPrefix }) => {
   const location = useLocation();
@@ -145,6 +148,50 @@ const AppRoutes = () => {
           <StudentProtectedFrame>
             <Suspense fallback={<RouteLoadingScreen label="Loading student profile..." />}>
               <StudentProfilePage />
+            </Suspense>
+          </StudentProtectedFrame>
+        }
+      />
+
+      <Route
+        path={ROUTES.student.testPapersRoot}
+        element={
+          <StudentProtectedFrame>
+            <Suspense fallback={<RouteLoadingScreen label="Loading exam vault subjects..." />}>
+              <TestPaperSubjectsPage />
+            </Suspense>
+          </StudentProtectedFrame>
+        }
+      />
+
+      <Route
+        path={`${ROUTES.student.testPapersRoot}/:subjectId`}
+        element={
+          <StudentProtectedFrame>
+            <Suspense fallback={<RouteLoadingScreen label="Loading chapter selection..." />}>
+              <TestPaperChaptersPage />
+            </Suspense>
+          </StudentProtectedFrame>
+        }
+      />
+
+      <Route
+        path={`${ROUTES.student.testPapersRoot}/:subjectId/:mode`}
+        element={
+          <StudentProtectedFrame>
+            <Suspense fallback={<RouteLoadingScreen label="Loading paper listing..." />}>
+              <TestPaperListPage />
+            </Suspense>
+          </StudentProtectedFrame>
+        }
+      />
+
+      <Route
+        path={`${ROUTES.student.testPapersRoot}/:subjectId/:mode/:chapterId`}
+        element={
+          <StudentProtectedFrame>
+            <Suspense fallback={<RouteLoadingScreen label="Loading paper listing..." />}>
+              <TestPaperListPage />
             </Suspense>
           </StudentProtectedFrame>
         }

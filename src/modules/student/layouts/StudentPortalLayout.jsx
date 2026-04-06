@@ -12,6 +12,7 @@ import "./studentPortalLayout.css";
 const NAV_ITEMS = [
   { label: "Dashboard", to: ROUTES.student.dashboard },
   { label: "Assessment Session", to: routeBuilders.assessmentSession.root },
+  { label: "Exam Vault", to: routeBuilders.testPapers.root },
   { label: "Profile", to: ROUTES.student.profile },
   { label: "Assessment Results", to: ROUTES.assessment.result },
 ];
