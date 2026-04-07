@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { LiveAttemptTimer } from "../components/AttemptTimer";
@@ -10,6 +10,7 @@ import TestStepHeader from "../components/TestStepHeader";
 import { useAttemptTimer } from "../hooks/useAttemptTimer";
 import { useSubmitAttempt } from "../hooks/useSubmitAttempt";
 import { ButtonBusyLabel } from "../../components/loading/LoadingPrimitives";
+import { useAppToast } from "../../components/notifications/useAppToast";
 import {
   getAttemptKey,
   selectAttemptStats,
@@ -21,6 +22,7 @@ import {
   SMART_TEST_GOALS,
 } from "../config/smartTestEngine";
 import { TEST_MODES } from "../../utils/constants";
+import { useCatalogStore } from "../../store/catalogStore";
 
 const PreviewPage = () => {
   const { subjectId, chapterId, difficultyLevel } = useParams();
@@ -31,6 +33,9 @@ const PreviewPage = () => {
 
   const [validationError, setValidationError] = useState("");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const catalogVersion = useCatalogStore((state) => state.version);
+  const catalogVersionRef = useRef(catalogVersion);
+  const { pushToast } = useAppToast();
 
   const {
     subject,
@@ -107,7 +112,13 @@ const PreviewPage = () => {
       setValidationError("");
 
       if (!autoSubmitted && stats.attempted === 0) {
-        setValidationError("At least one answer is required to submit.");
+        const message = "At least one answer is required to submit.";
+        setValidationError(message);
+        pushToast({
+          title: "Cannot submit yet",
+          message: "Select an option for any question before final submission.",
+          tone: "warning",
+        });
         return;
       }
 
@@ -117,7 +128,14 @@ const PreviewPage = () => {
         setShowSubmitConfirm(false);
       }
     },
-    [clearSubmitError, setShowSubmitConfirm, setValidationError, stats.attempted, submitAttempt]
+    [
+      clearSubmitError,
+      pushToast,
+      setShowSubmitConfirm,
+      setValidationError,
+      stats.attempted,
+      submitAttempt,
+    ]
   );
 
   const handleAutoSubmit = useCallback(() => {
@@ -179,6 +197,61 @@ const PreviewPage = () => {
     questions.length,
     routeAttemptKey,
     subjectId,
+  ]);
+
+  useEffect(() => {
+    if (!questions.length) {
+      catalogVersionRef.current = catalogVersion;
+      return;
+    }
+
+    if (!catalogVersionRef.current) {
+      catalogVersionRef.current = catalogVersion;
+      return;
+    }
+
+    if (catalogVersionRef.current === catalogVersion) {
+      return;
+    }
+
+    catalogVersionRef.current = catalogVersion;
+    const hasAttemptProgress = stats.attempted > 0 || stats.visitedCount > 1;
+
+    if (!hasAttemptProgress && !submitting) {
+      pushToast({
+        title: "Exam updated",
+        message: "Latest exam configuration was published. Returning to attempt view.",
+        tone: "info",
+      });
+      navigate(
+        `${routeBuilders.assessmentSession.attempt(
+          subjectId,
+          chapterId,
+          normalizedDifficultyLevel
+        )}?goal=${effectiveSmartGoal}`,
+        { replace: true }
+      );
+      return;
+    }
+
+    pushToast({
+      title: "Exam settings changed",
+      message:
+        "This in-progress attempt remains unchanged, and new settings apply from your next attempt.",
+      tone: "warning",
+    });
+  }, [
+    catalogVersion,
+    chapterId,
+    effectiveSmartGoal,
+    navigate,
+    normalizedDifficultyLevel,
+    pushToast,
+    questions.length,
+    stats.attempted,
+    stats.visitedCount,
+    subjectId,
+    submitting,
   ]);
 
   if (!questions.length) {
@@ -249,6 +322,15 @@ const PreviewPage = () => {
               className="btn-primary"
               onClick={() => {
                 setValidationError("");
+                if (stats.attempted === 0) {
+                  setValidationError("At least one answer is required to submit.");
+                  pushToast({
+                    title: "Cannot submit yet",
+                    message: "Select an option for any question before final submission.",
+                    tone: "warning",
+                  });
+                  return;
+                }
                 setShowSubmitConfirm(true);
               }}
               disabled={submitting}
@@ -282,8 +364,23 @@ const PreviewPage = () => {
         </article>
       </div>
 
-      {validationError ? <p className="mcq-inline-error">{validationError}</p> : null}
-      {submitError ? <p className="mcq-inline-error">{submitError}</p> : null}
+      <div className="mcq-feedback-stack" aria-live="polite">
+        {validationError ? (
+          <section className="mcq-feedback-card is-warning" role="alert">
+            <h4>Submission needs one answer</h4>
+            <p>{validationError}</p>
+            <small>Select any question option and submit again.</small>
+          </section>
+        ) : null}
+
+        {submitError ? (
+          <section className="mcq-feedback-card is-error" role="alert">
+            <h4>Submission failed</h4>
+            <p>{submitError}</p>
+            <small>Please retry in a few seconds.</small>
+          </section>
+        ) : null}
+      </div>
 
       <div className="mcq-attempt-grid">
         <div className="mcq-attempt-grid__main">

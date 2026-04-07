@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import AttemptQuestionCard from "../components/AttemptQuestionCard";
@@ -12,6 +12,7 @@ import TestStepHeader from "../components/TestStepHeader";
 import { useAttemptTimer } from "../hooks/useAttemptTimer";
 import { useSubmitAttempt } from "../hooks/useSubmitAttempt";
 import { ButtonBusyLabel } from "../../components/loading/LoadingPrimitives";
+import { useAppToast } from "../../components/notifications/useAppToast";
 import {
   getChapterById,
   getDifficultyLevels,
@@ -37,6 +38,7 @@ import {
   SMART_TEST_GOALS,
 } from "../config/smartTestEngine";
 import { TEST_MODES } from "../../utils/constants";
+import { useCatalogStore } from "../../store/catalogStore";
 
 const AttemptPage = () => {
   const { subjectId, chapterId, difficultyLevel } = useParams();
@@ -50,6 +52,9 @@ const AttemptPage = () => {
   const [validationError, setValidationError] = useState("");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [tabWarning, setTabWarning] = useState("");
+  const catalogVersion = useCatalogStore((state) => state.version);
+  const catalogVersionRef = useRef(catalogVersion);
+  const { pushToast } = useAppToast();
 
   const {
     subject,
@@ -83,6 +88,7 @@ const AttemptPage = () => {
     setQuestionNote,
     setActiveQuestionId,
     incrementTabSwitchCount,
+    resetFlow,
   } = useTestFlowStore(
     useShallow((state) => ({
       subject: state.subject,
@@ -116,6 +122,7 @@ const AttemptPage = () => {
       setQuestionNote: state.setQuestionNote,
       setActiveQuestionId: state.setActiveQuestionId,
       incrementTabSwitchCount: state.incrementTabSwitchCount,
+      resetFlow: state.resetFlow,
     }))
   );
 
@@ -333,13 +340,65 @@ const AttemptPage = () => {
     return () => window.clearTimeout(timeoutId);
   }, [tabWarning]);
 
+  useEffect(() => {
+    if (!questions.length) {
+      catalogVersionRef.current = catalogVersion;
+      return;
+    }
+
+    if (!catalogVersionRef.current) {
+      catalogVersionRef.current = catalogVersion;
+      return;
+    }
+
+    if (catalogVersionRef.current === catalogVersion) {
+      return;
+    }
+
+    catalogVersionRef.current = catalogVersion;
+    const hasAttemptProgress = stats.attempted > 0 || stats.visitedCount > 1;
+
+    if (!hasAttemptProgress && !submitting) {
+      resetFlow();
+      pushToast({
+        title: "Exam updated",
+        message: "Super Admin updated this exam. The latest configuration has been loaded.",
+        tone: "info",
+      });
+      void reloadAttempt();
+      return;
+    }
+
+    pushToast({
+      title: "Exam settings changed",
+      message:
+        "Your current attempt is preserved, and latest settings apply from your next attempt.",
+      tone: "warning",
+    });
+  }, [
+    catalogVersion,
+    pushToast,
+    questions.length,
+    reloadAttempt,
+    resetFlow,
+    stats.attempted,
+    stats.visitedCount,
+    submitting,
+  ]);
+
   const runSubmit = useCallback(
     async (autoSubmitted) => {
       clearSubmitError();
       setValidationError("");
 
       if (!autoSubmitted && stats.attempted === 0) {
-        setValidationError("Please answer at least one question before submitting.");
+        const message = "Please answer at least one question before submitting.";
+        setValidationError(message);
+        pushToast({
+          title: "Cannot submit yet",
+          message: "Select an option for any question, then submit again.",
+          tone: "warning",
+        });
         return;
       }
 
@@ -349,7 +408,14 @@ const AttemptPage = () => {
         setShowSubmitConfirm(false);
       }
     },
-    [clearSubmitError, setShowSubmitConfirm, setValidationError, stats.attempted, submitAttempt]
+    [
+      clearSubmitError,
+      pushToast,
+      setShowSubmitConfirm,
+      setValidationError,
+      stats.attempted,
+      submitAttempt,
+    ]
   );
 
   const handleAutoSubmit = useCallback(() => {
@@ -444,6 +510,15 @@ const AttemptPage = () => {
               className="btn-primary"
               onClick={() => {
                 setValidationError("");
+                if (stats.attempted === 0) {
+                  setValidationError("Please answer at least one question before submitting.");
+                  pushToast({
+                    title: "Cannot submit yet",
+                    message: "Select an option for any question, then submit again.",
+                    tone: "warning",
+                  });
+                  return;
+                }
                 setShowSubmitConfirm(true);
               }}
               disabled={submitting}
@@ -486,8 +561,24 @@ const AttemptPage = () => {
       {tabSwitchCount > 0 ? (
         <p className="mcq-inline-muted">Tab switched {tabSwitchCount} time(s) in this attempt.</p>
       ) : null}
-      {validationError ? <p className="mcq-inline-error">{validationError}</p> : null}
-      {submitError ? <p className="mcq-inline-error">{submitError}</p> : null}
+
+      <div className="mcq-feedback-stack" aria-live="polite">
+        {validationError ? (
+          <section className="mcq-feedback-card is-warning" role="alert">
+            <h4>Submission needs one answer</h4>
+            <p>{validationError}</p>
+            <small>Select any question option and submit again.</small>
+          </section>
+        ) : null}
+
+        {submitError ? (
+          <section className="mcq-feedback-card is-error" role="alert">
+            <h4>Submission failed</h4>
+            <p>{submitError}</p>
+            <small>Please retry in a few seconds.</small>
+          </section>
+        ) : null}
+      </div>
 
       <div className="mcq-attempt-grid">
         <div className="mcq-attempt-grid__main">
