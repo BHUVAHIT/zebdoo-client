@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
 import { LiveAttemptTimer } from "../components/AttemptTimer";
 import EmptyState from "../components/EmptyState";
@@ -24,6 +24,9 @@ import { TEST_MODES } from "../../utils/constants";
 const PreviewPage = () => {
   const { subjectId, chapterId, difficultyLevel } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const normalizedDifficultyLevel = String(difficultyLevel || "").trim().toLowerCase();
+  const currentGoal = String(searchParams.get("goal") || "").trim().toLowerCase();
 
   const [validationError, setValidationError] = useState("");
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
@@ -82,7 +85,7 @@ const PreviewPage = () => {
   const routeAttemptKey = getAttemptKey({
     subjectId,
     chapterId,
-    difficultyLevel,
+    difficultyLevel: normalizedDifficultyLevel,
     smartGoal: effectiveSmartGoal,
     attemptMode: TEST_MODES.EXAM,
   });
@@ -113,7 +116,7 @@ const PreviewPage = () => {
         setShowSubmitConfirm(false);
       }
     },
-    [clearSubmitError, stats.attempted, submitAttempt]
+    [clearSubmitError, setShowSubmitConfirm, setValidationError, stats.attempted, submitAttempt]
   );
 
   const handleAutoSubmit = useCallback(() => {
@@ -126,16 +129,52 @@ const PreviewPage = () => {
   });
 
   useEffect(() => {
+    if (!subjectId || !chapterId || !normalizedDifficultyLevel) return;
+    if (currentGoal === SMART_TEST_GOALS.EXAM_SIMULATION) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("goal", SMART_TEST_GOALS.EXAM_SIMULATION);
+
+    navigate(
+      `${routeBuilders.assessmentSession.preview(
+        subjectId,
+        chapterId,
+        normalizedDifficultyLevel
+      )}?${nextParams.toString()}`,
+      { replace: true }
+    );
+  }, [
+    chapterId,
+    currentGoal,
+    navigate,
+    normalizedDifficultyLevel,
+    searchParams,
+    subjectId,
+  ]);
+
+  useEffect(() => {
+    if (submitting || !questions.length) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [questions.length, submitting]);
+
+  useEffect(() => {
     if (attemptKey !== routeAttemptKey || !questions.length) {
-      navigate(routeBuilders.assessmentSession.attempt(subjectId, chapterId, difficultyLevel), {
+      navigate(routeBuilders.assessmentSession.attempt(subjectId, chapterId, normalizedDifficultyLevel), {
         replace: true,
       });
     }
   }, [
     attemptKey,
     chapterId,
-    difficultyLevel,
     navigate,
+    normalizedDifficultyLevel,
     questions.length,
     routeAttemptKey,
     subjectId,
@@ -152,7 +191,7 @@ const PreviewPage = () => {
             `${routeBuilders.assessmentSession.attempt(
               subjectId,
               chapterId,
-              difficultyLevel
+              normalizedDifficultyLevel
             )}?goal=${effectiveSmartGoal}`
           )
         }
@@ -180,7 +219,7 @@ const PreviewPage = () => {
             to: routeBuilders.assessmentSession.attempt(
               subjectId,
               chapterId,
-              difficultyLevel
+              normalizedDifficultyLevel
             ),
           },
           { label: "Preview" },
@@ -196,7 +235,7 @@ const PreviewPage = () => {
                   `${routeBuilders.assessmentSession.attempt(
                     subjectId,
                     chapterId,
-                    difficultyLevel
+                    normalizedDifficultyLevel
                   )}?goal=${effectiveSmartGoal}`
                 )
               }
@@ -293,7 +332,7 @@ const PreviewPage = () => {
                         `${routeBuilders.assessmentSession.attempt(
                           subjectId,
                           chapterId,
-                          difficultyLevel
+                          normalizedDifficultyLevel
                         )}?goal=${effectiveSmartGoal}&q=${absoluteIndex + 1}`
                       );
                     }}

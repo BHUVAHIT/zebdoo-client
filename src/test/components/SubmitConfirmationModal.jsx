@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { useEffect } from "react";
 
 const SubmitConfirmationModal = ({
   open,
@@ -8,21 +9,43 @@ const SubmitConfirmationModal = ({
   onConfirm,
   modeLabel,
 }) => {
+  useEffect(() => {
+    if (!open || submitting) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onCancel();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel, open, submitting]);
+
   if (!open) return null;
 
   return (
-    <div className="mcq-submit-modal__backdrop" role="presentation" onClick={onCancel}>
+    <div
+      className="mcq-submit-modal__backdrop"
+      role="presentation"
+      onClick={submitting ? undefined : onCancel}
+    >
       <section
         className="mcq-submit-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="Confirm submit"
+        aria-labelledby="mcq-submit-title"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3>Confirm Final Submission</h3>
+        <h3 id="mcq-submit-title">Confirm Final Submission</h3>
         <p>
           {modeLabel} review is complete. Once submitted, answers cannot be changed.
         </p>
+        {stats.notAnswered > 0 ? (
+          <p className="mcq-submit-modal__warning">
+            You still have {stats.notAnswered} unanswered question(s).
+          </p>
+        ) : null}
 
         <div className="mcq-submit-modal__stats">
           <article>
@@ -44,7 +67,12 @@ const SubmitConfirmationModal = ({
         </div>
 
         <footer>
-          <button type="button" className="btn-secondary" onClick={onCancel}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onCancel}
+            disabled={submitting}
+          >
             Continue Reviewing
           </button>
           <button

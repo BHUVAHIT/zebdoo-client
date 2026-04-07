@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo } from "react";
 import PropTypes from "prop-types";
 
 const OPTION_LABELS = ["A", "B", "C", "D"];
@@ -20,8 +20,6 @@ const AttemptQuestionCard = ({
   onSaveNote,
   onFocus,
 }) => {
-  const [draftNote, setDraftNote] = useState(note);
-
   const hasAnswer = selectedOption !== null && selectedOption !== undefined;
 
   return (
@@ -42,6 +40,7 @@ const AttemptQuestionCard = ({
             type="button"
             className={`btn-chip ${isMarkedForReview ? "is-active" : ""}`}
             onClick={() => onToggleMark(question.id)}
+            aria-pressed={isMarkedForReview}
           >
             {isMarkedForReview ? "Unmark" : "Mark"}
           </button>
@@ -49,6 +48,7 @@ const AttemptQuestionCard = ({
             type="button"
             className={`btn-chip ${isBookmarked ? "is-active" : ""}`}
             onClick={() => onToggleBookmark(question.id)}
+            aria-pressed={isBookmarked}
           >
             {isBookmarked ? "Bookmarked" : "Bookmark"}
           </button>
@@ -86,6 +86,7 @@ const AttemptQuestionCard = ({
               onClick={() => onSelect(question.id, option.id)}
               role="radio"
               aria-checked={isSelected}
+              aria-label={`Option ${OPTION_LABELS[optionIndex] || option.id}`}
             >
               <span className="mcq-option__label">{OPTION_LABELS[optionIndex] || option.id}</span>
               <span className="mcq-option__text">{option.text}</span>
@@ -106,10 +107,9 @@ const AttemptQuestionCard = ({
         <span>Personal note</span>
         <textarea
           rows={2}
-          value={draftNote}
+          value={note || ""}
           placeholder="Write a short concept note for revision"
-          onChange={(event) => setDraftNote(event.target.value)}
-          onBlur={() => onSaveNote(question.id, draftNote)}
+          onChange={(event) => onSaveNote(question.id, event.target.value)}
         />
       </label>
     </article>

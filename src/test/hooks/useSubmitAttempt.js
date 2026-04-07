@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { submitMcqAttempt } from "../services/testService";
 import { useTestFlowStore } from "../store/testFlowStore";
@@ -13,11 +13,13 @@ import { ROUTES } from "../../routes/routePaths";
 import { useAppToast } from "../../components/notifications/useAppToast";
 import { syncLearningArtifactsFromAttempt } from "../../services/learningAnalyticsService";
 import { useAuthStore } from "../../store/authStore";
+import { ATTEMPT_STATUS } from "../utils/attemptResume";
 
 export const useSubmitAttempt = () => {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const submitInFlightRef = useRef(false);
   const { pushToast } = useAppToast();
 
   const resetAttemptOnly = useTestFlowStore((state) => state.resetAttemptOnly);
@@ -25,6 +27,16 @@ export const useSubmitAttempt = () => {
 
   const submitAttempt = useCallback(
     async ({ autoSubmitted = false }) => {
+      if (submitInFlightRef.current) {
+        return;
+      }
+
+      const attemptSnapshot = useTestFlowStore.getState();
+      if (attemptSnapshot.attemptStatus !== ATTEMPT_STATUS.IN_PROGRESS) {
+        return;
+      }
+
+      submitInFlightRef.current = true;
       finalizeQuestionTiming();
 
       const { subject, chapter, difficulty, questions, answers, timer } =
@@ -130,6 +142,7 @@ export const useSubmitAttempt = () => {
         });
         throw error;
       } finally {
+        submitInFlightRef.current = false;
         setSubmitting(false);
       }
     },

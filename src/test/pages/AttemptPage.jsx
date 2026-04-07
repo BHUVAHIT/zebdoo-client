@@ -41,6 +41,8 @@ const AttemptPage = () => {
   const { subjectId, chapterId, difficultyLevel } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const normalizedDifficultyLevel = String(difficultyLevel || "").trim().toLowerCase();
+  const currentGoal = String(searchParams.get("goal") || "").trim().toLowerCase();
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -144,7 +146,7 @@ const AttemptPage = () => {
   const routeAttemptKey = getAttemptKey({
     subjectId,
     chapterId,
-    difficultyLevel,
+    difficultyLevel: normalizedDifficultyLevel,
     smartGoal: effectiveSmartGoal,
     attemptMode: effectiveAttemptMode,
   });
@@ -160,7 +162,7 @@ const AttemptPage = () => {
   }, [currentPage, pageSize, questions]);
 
   const reloadAttempt = useCallback(async () => {
-    if (!subjectId || !chapterId || !difficultyLevel) {
+    if (!subjectId || !chapterId || !normalizedDifficultyLevel) {
       navigate(routeBuilders.assessmentSession.root, { replace: true });
       return;
     }
@@ -169,7 +171,7 @@ const AttemptPage = () => {
     const expectedAttemptTestId = buildAttemptTestId({
       subjectId,
       chapterId,
-      difficultyId: difficultyLevel,
+      difficultyId: normalizedDifficultyLevel,
     });
     const attemptSnapshot = buildAttemptSnapshot({
       id: snapshot.attemptKey,
@@ -207,7 +209,9 @@ const AttemptPage = () => {
         getDifficultyLevels({ subjectId, chapterId }),
       ]);
 
-      const resolvedDifficulty = levels.find((item) => item.id === difficultyLevel);
+      const resolvedDifficulty = levels.find(
+        (item) => String(item.id || "").toLowerCase() === normalizedDifficultyLevel
+      );
       if (!resolvedDifficulty) {
         throw new Error("Selected difficulty does not exist.");
       }
@@ -252,12 +256,12 @@ const AttemptPage = () => {
     }
   }, [
     chapterId,
-    difficultyLevel,
     effectiveAttemptMode,
     effectiveProfile,
     effectiveSmartGoal,
     initializeAttempt,
     navigate,
+    normalizedDifficultyLevel,
     routeAttemptKey,
     setAttemptMode,
     setChapter,
@@ -270,6 +274,35 @@ const AttemptPage = () => {
   useEffect(() => {
     reloadAttempt();
   }, [reloadAttempt]);
+
+  useEffect(() => {
+    if (!subjectId || !chapterId || !normalizedDifficultyLevel) return;
+    if (currentGoal === SMART_TEST_GOALS.EXAM_SIMULATION) return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("goal", SMART_TEST_GOALS.EXAM_SIMULATION);
+
+    navigate(
+      `${routeBuilders.assessmentSession.attempt(
+        subjectId,
+        chapterId,
+        normalizedDifficultyLevel
+      )}?${nextParams.toString()}`,
+      { replace: true }
+    );
+  }, [chapterId, currentGoal, navigate, normalizedDifficultyLevel, searchParams, subjectId]);
+
+  useEffect(() => {
+    if (loading || submitting || !questions.length) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [loading, questions.length, submitting]);
 
   useEffect(() => {
     const questionNumber = Number(searchParams.get("q"));
@@ -315,7 +348,7 @@ const AttemptPage = () => {
         setShowSubmitConfirm(false);
       }
     },
-    [clearSubmitError, stats.attempted, submitAttempt]
+    [clearSubmitError, setShowSubmitConfirm, setValidationError, stats.attempted, submitAttempt]
   );
 
   const handleAutoSubmit = useCallback(() => {
@@ -397,7 +430,7 @@ const AttemptPage = () => {
                   `${routeBuilders.assessmentSession.preview(
                     subjectId,
                     chapterId,
-                    difficultyLevel
+                    normalizedDifficultyLevel
                   )}?goal=${effectiveSmartGoal}`
                 )
               }
@@ -422,7 +455,7 @@ const AttemptPage = () => {
       <p className="mcq-inline-muted">
         Mode: {recommendedGoalLabel}. Current goal: {activeGoalLabel}.
       </p>
-      {adaptiveDifficulty.difficultyId !== String(difficultyLevel || "").toLowerCase() ? (
+      {adaptiveDifficulty.difficultyId !== normalizedDifficultyLevel ? (
         <p className="mcq-inline-warning">
           Adaptive hint: {adaptiveDifficulty.reason} Recommended difficulty: {adaptiveDifficulty.difficultyId.toUpperCase()}.
         </p>

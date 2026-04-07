@@ -262,6 +262,7 @@ const buildAdminCatalogSnapshot = (catalogSnapshot = selectCatalogSnapshot()) =>
 };
 
 const getCatalogSnapshot = async () => {
+  // STATIC NOW → API LATER
   const catalogSnapshot = selectCatalogSnapshot();
   const version = Number(catalogSnapshot?.version || 0);
 

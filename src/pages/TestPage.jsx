@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import "../test/testFlow.css";
 import { routeBuilders } from "../routes/routePaths";
 
@@ -19,13 +19,30 @@ const RouteFallback = () => (
   </div>
 );
 
+const SubjectAliasRedirect = () => {
+  const { subjectId } = useParams();
+  return <Navigate to={routeBuilders.assessmentSession.chapters(subjectId)} replace />;
+};
+
+const ChapterAliasRedirect = () => {
+  const { subjectId, chapterId } = useParams();
+  return (
+    <Navigate
+      to={routeBuilders.assessmentSession.difficulty(subjectId, chapterId)}
+      replace
+    />
+  );
+};
+
 const TestPage = () => {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<TestFlowLayout />}>
           <Route index element={<SubjectSelectionPage />} />
+          <Route path=":subjectId" element={<SubjectAliasRedirect />} />
           <Route path=":subjectId/chapters" element={<ChapterSelectionPage />} />
+          <Route path=":subjectId/:chapterId/chapters" element={<ChapterAliasRedirect />} />
           <Route
             path=":subjectId/:chapterId/difficulty"
             element={<DifficultySelectionPage />}
