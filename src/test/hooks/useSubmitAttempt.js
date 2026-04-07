@@ -38,31 +38,30 @@ export const useSubmitAttempt = () => {
 
       submitInFlightRef.current = true;
       finalizeQuestionTiming();
-
-      const {
-        subject,
-        chapter,
-        difficulty,
-        questions,
-        answers,
-        timer,
-        attemptMode,
-        smartGoal,
-        questionTimeSpent,
-        bookmarkedQuestions,
-        questionNotes,
-      } = useTestFlowStore.getState();
-      const currentUser = useAuthStore.getState().user;
-      const userScopeId = resolveStorageScopeId(currentUser);
-
-      if (!subject || !chapter || !difficulty || !questions.length) {
-        throw new Error("Attempt context is incomplete. Please restart the test.");
-      }
-
-      setSubmitting(true);
-      setSubmitError("");
-
       try {
+        const {
+          subject,
+          chapter,
+          difficulty,
+          questions,
+          answers,
+          timer,
+          attemptMode,
+          smartGoal,
+          questionTimeSpent,
+          bookmarkedQuestions,
+          questionNotes,
+        } = useTestFlowStore.getState();
+        const currentUser = useAuthStore.getState().user;
+        const userScopeId = resolveStorageScopeId(currentUser);
+
+        if (!subject || !chapter || !difficulty || !questions.length) {
+          throw new Error("Attempt context is incomplete. Please restart the test.");
+        }
+
+        setSubmitting(true);
+        setSubmitError("");
+
         const duration = Number(timer.durationSeconds) || 0;
         const timeLeft = Number(timer.timeLeft) || 0;
         const timeTakenSeconds = Math.max(duration - timeLeft, 0);

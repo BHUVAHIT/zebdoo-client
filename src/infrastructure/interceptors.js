@@ -1,4 +1,4 @@
-import { AUTH_STORAGE_KEYS } from "../store/authStore";
+import { AUTH_STORAGE_KEYS, useAuthStore } from "../store/authStore";
 
 export const attachRequestInterceptors = (client) => {
   client.interceptors.request.use((config) => {
@@ -20,7 +20,7 @@ export const attachResponseInterceptors = (client) => {
     (response) => response,
     (error) => {
       if (error?.response?.status === 401) {
-        window.localStorage.removeItem(AUTH_STORAGE_KEYS.accessToken);
+        useAuthStore.getState().logout();
       }
 
       return Promise.reject(error);
