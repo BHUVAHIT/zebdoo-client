@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { routeBuilders, ROUTES } from "../../../routes/routePaths";
 import SidebarLogout from "../../../components/SidebarLogout";
 import useAuth from "../../../hooks/useAuth";
@@ -18,10 +18,13 @@ const NAV_ITEMS = [
 
 const SEGMENT_LABELS = {
   dashboard: "Dashboard",
+  "test-papers": "Exam Vault",
   assessment: "Assessment",
   session: "Session",
   result: "Result",
   chapters: "Chapters",
+  "chapter-wise": "Chapter Wise",
+  "full-syllabus": "Full Syllabus",
   difficulty: "Difficulty",
   attempt: "Attempt",
   preview: "Preview",
@@ -37,8 +40,11 @@ const buildBreadcrumbs = (pathname) => {
   return segments.map((segment) => {
     cumulative += `/${segment}`;
     const isIdentifier = /\d/.test(segment) || segment.length > 20;
+    const normalizedSegment = segment.toLowerCase();
     return {
-      label: isIdentifier ? "Selection" : SEGMENT_LABELS[segment] || segment,
+      label: isIdentifier
+        ? "Selection"
+        : SEGMENT_LABELS[normalizedSegment] || segment.replace(/-/g, " "),
       to: cumulative,
     };
   });
@@ -91,15 +97,34 @@ const StudentPortalLayout = ({ children }) => {
     return () => document.removeEventListener("mousedown", handleOutsideClick);
   }, []);
 
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setIsSidebarOpen(false);
+      setIsProfileMenuOpen(false);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [location.pathname]);
+
   return (
     <div className="student-portal-shell">
       <button
         type="button"
         className="student-portal-shell__mobile-toggle"
         onClick={toggleSidebar}
+        aria-label={isSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
       >
         {isSidebarOpen ? "Close" : "Menu"}
       </button>
+
+      {isSidebarOpen ? (
+        <button
+          type="button"
+          className="student-portal-shell__backdrop"
+          aria-label="Close navigation"
+          onClick={closeSidebar}
+        />
+      ) : null}
 
       <aside className={`student-portal-sidebar ${isSidebarOpen ? "is-open" : ""}`}>
         <div className="student-portal-sidebar__brand">
@@ -130,14 +155,18 @@ const StudentPortalLayout = ({ children }) => {
 
       <main className="student-portal-main">
         <header className="student-portal-main__header">
-          <div>
+          <div className="student-portal-main__intro">
             <p className="student-portal-main__kicker">Student Workspace</p>
-            <h2>{studentProfile.name || "Learner"}</h2>
+            <h2>Welcome, {studentProfile.name || "Learner"}</h2>
             <nav className="student-portal-main__breadcrumb" aria-label="Breadcrumb">
               {breadcrumbs.map((item, index) => (
                 <span key={`${item.label}-${item.to}`}>
                   {index > 0 ? <em>/</em> : null}
-                  <span>{item.label}</span>
+                  {item.to && index < breadcrumbs.length - 1 ? (
+                    <Link to={item.to}>{item.label}</Link>
+                  ) : (
+                    <span>{item.label}</span>
+                  )}
                 </span>
               ))}
             </nav>
@@ -148,6 +177,8 @@ const StudentPortalLayout = ({ children }) => {
               type="button"
               className="student-portal-main__identity"
               onClick={toggleProfileMenu}
+              aria-expanded={isProfileMenuOpen}
+              aria-haspopup="menu"
             >
               <span className="student-portal-main__avatar">
                 {studentProfile.avatarUrl ? (
@@ -156,9 +187,9 @@ const StudentPortalLayout = ({ children }) => {
                   <em>{getInitials(studentProfile.name)}</em>
                 )}
               </span>
-              <span>
+              <span className="student-portal-main__identity-text">
                 <strong>{studentProfile.name || "Learner"}</strong>
-                <small>{studentProfile.email || "-"}</small>
+                <small>{studentProfile.email || "Student account"}</small>
               </span>
             </button>
 

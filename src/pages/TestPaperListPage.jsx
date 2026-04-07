@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BookMarked, Clock3, Layers3, Search } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { AlertTriangle, ArrowLeft, Layers3, Search } from "lucide-react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
 import PaperList from "../components/PaperList";
@@ -12,7 +12,7 @@ import {
   TEST_PAPER_TYPE_OPTIONS,
   TEST_PAPER_TYPES,
 } from "../constants/paperTypes";
-import { routeBuilders } from "../routes/routePaths";
+import { routeBuilders, ROUTES } from "../routes/routePaths";
 import { testPaperService } from "../services/testPaperService";
 import "./testPapers.css";
 
@@ -40,7 +40,8 @@ const TestPaperListPage = () => {
   const [papers, setPapers] = useState([]);
   const [chapters, setChapters] = useState([]);
   const [activeType, setActiveType] = useState(TEST_PAPER_TYPES.PYC);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [yearFilter, setYearFilter] = useState("all");
   const [bookmarkedPaperIds, setBookmarkedPaperIds] = useState(() => readStoredBookmarkIds());
 
@@ -57,9 +58,20 @@ const TestPaperListPage = () => {
 
   useEffect(() => {
     setActiveType(TEST_PAPER_TYPES.PYC);
-    setSearchTerm("");
+    setSearchInput("");
+    setDebouncedSearchTerm("");
     setYearFilter("all");
   }, [effectiveChapterId, effectiveMode, subjectId]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchInput.trim());
+    }, 260);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput]);
 
   const loadPapers = useCallback(async () => {
     if (!effectiveMode) {
@@ -142,21 +154,33 @@ const TestPaperListPage = () => {
   }, [papers]);
 
   const availablePycYears = useMemo(() => {
-    const years = papers
-      .filter((paper) => paper.type === TEST_PAPER_TYPES.PYC)
+    const activeTypePapers = papers.filter((paper) => {
+      const normalizedType = TEST_PAPER_TYPE_META[paper.type] ? paper.type : TEST_PAPER_TYPES.OTHER;
+      return normalizedType === activeType;
+    });
+
+    const source = activeTypePapers.length > 0 ? activeTypePapers : papers;
+
+    const years = source
       .map((paper) => String(paper.year))
       .filter(Boolean);
 
     return Array.from(new Set(years)).sort((left, right) => Number(right) - Number(left));
-  }, [papers]);
+  }, [activeType, papers]);
+
+  useEffect(() => {
+    if (yearFilter === "all") return;
+    if (availablePycYears.includes(yearFilter)) return;
+    setYearFilter("all");
+  }, [availablePycYears, yearFilter]);
 
   const filteredPapers = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const query = debouncedSearchTerm.toLowerCase();
 
     return papers
       .filter((paper) => paper.type === activeType)
       .filter((paper) => {
-        if (activeType !== TEST_PAPER_TYPES.PYC || yearFilter === "all") return true;
+        if (yearFilter === "all") return true;
         return String(paper.year) === yearFilter;
       })
       .filter((paper) => {
@@ -172,25 +196,7 @@ const TestPaperListPage = () => {
           .toLowerCase();
         return haystack.includes(query);
       });
-  }, [activeType, papers, searchTerm, yearFilter]);
-
-  const recentPapers = useMemo(
-    () =>
-      [...papers]
-        .sort((left, right) => {
-          const rightTime = new Date(right.updatedAt || right.createdAt || 0).getTime();
-          const leftTime = new Date(left.updatedAt || left.createdAt || 0).getTime();
-          if (rightTime !== leftTime) return rightTime - leftTime;
-          return Number(right.year || 0) - Number(left.year || 0);
-        })
-        .slice(0, 4),
-    [papers]
-  );
-
-  const savedPapers = useMemo(
-    () => papers.filter((paper) => bookmarkedPaperIdSet.has(paper.id)).slice(0, 4),
-    [bookmarkedPaperIdSet, papers]
-  );
+  }, [activeType, debouncedSearchTerm, papers, yearFilter]);
 
   const openPaper = (paper) => {
     if (typeof window === "undefined") return;
@@ -208,26 +214,81 @@ const TestPaperListPage = () => {
     });
   }, []);
 
+  const chapterFilterValue = useMemo(() => {
+    if (effectiveMode !== TEST_PAPER_MODES.CHAPTER_WISE) return "";
+    return effectiveChapterId || "all";
+  }, [effectiveChapterId, effectiveMode]);
+
+  const isChapterSpecificView = useMemo(
+    () =>
+      effectiveMode === TEST_PAPER_MODES.CHAPTER_WISE &&
+      Boolean(chapterFilterValue) &&
+      chapterFilterValue !== "all",
+    [chapterFilterValue, effectiveMode]
+  );
+
+  const backButtonLabel = useMemo(() => {
+    if (effectiveMode === TEST_PAPER_MODES.FULL_SYLLABUS) {
+      return "Back to subject";
+    }
+
+    if (isChapterSpecificView) {
+      return "Back to chapters";
+    }
+
+    return "Back to subject";
+  }, [effectiveMode, isChapterSpecificView]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips = [];
+    if (debouncedSearchTerm) chips.push(`Search: ${debouncedSearchTerm}`);
+    if (yearFilter !== "all") chips.push(`Year: ${yearFilter}`);
+    if (effectiveMode === TEST_PAPER_MODES.CHAPTER_WISE) chips.push(`Chapter: ${chapterLabel}`);
+    chips.push(`Type: ${TEST_PAPER_TYPE_META[activeType]?.shortLabel || "OTHER"}`);
+    return chips;
+  }, [activeType, chapterLabel, debouncedSearchTerm, effectiveMode, yearFilter]);
+
+  const clearFilters = useCallback(() => {
+    setSearchInput("");
+    setDebouncedSearchTerm("");
+    setYearFilter("all");
+    setActiveType(TEST_PAPER_TYPES.PYC);
+  }, []);
+
   return (
     <section className="exam-vault-shell">
       <section className="exam-vault-page exam-vault-page--list">
         <header className="exam-vault-hero">
+          <div className="exam-vault-hero__top-row">
+            <div className="exam-vault-breadcrumbs" aria-label="Breadcrumb">
+              <Link to={ROUTES.student.dashboard} className="exam-vault-breadcrumb-link">
+                Dashboard
+              </Link>
+              <span>/</span>
+              <Link to={routeBuilders.testPapers.root} className="exam-vault-breadcrumb-link">
+                {TEST_PAPER_MODULE.name}
+              </Link>
+              <span>/</span>
+              <Link
+                to={routeBuilders.testPapers.subject(subjectId)}
+                className="exam-vault-breadcrumb-link"
+              >
+                {subject?.name || "Subject"}
+              </Link>
+              <span>/</span>
+              <strong className="exam-vault-breadcrumb-current">{chapterLabel}</strong>
+            </div>
+            <span className="exam-vault-info-chip">Student view only</span>
+          </div>
+
           <button
             type="button"
             className="exam-vault-back-btn"
             onClick={() => navigate(routeBuilders.testPapers.subject(subjectId))}
           >
             <ArrowLeft size={16} />
-            <span>Back to chapter mode</span>
+            <span>{backButtonLabel}</span>
           </button>
-
-          <div className="exam-vault-breadcrumbs" aria-label="Breadcrumb">
-            <span>{TEST_PAPER_MODULE.name}</span>
-            <span>/</span>
-            <span>{subject?.name || "Subject"}</span>
-            <span>/</span>
-            <strong>{chapterLabel}</strong>
-          </div>
 
           <p className="exam-vault-hero__kicker">{TEST_PAPER_MODULE.name}</p>
           <h1>{subject?.name || "Subject"} Papers</h1>
@@ -235,6 +296,12 @@ const TestPaperListPage = () => {
         </header>
 
         <section className="exam-vault-subjects-shell">
+          {isChapterSpecificView ? (
+            <p className="exam-vault-context-note">
+              Chapter-focused view: mode switching is available at subject level.
+            </p>
+          ) : null}
+
           <div className="exam-vault-list-toolbar">
             <div className="exam-vault-list-toolbar__meta">
               <span>{filteredPapers.length} papers visible</span>
@@ -243,34 +310,73 @@ const TestPaperListPage = () => {
               </small>
             </div>
 
-            <label className="exam-vault-search-input exam-vault-search-input--toolbar" htmlFor="paper-search">
-              <Search size={16} aria-hidden="true" />
-              <input
-                id="paper-search"
-                type="search"
-                placeholder="Search subject, chapter, or paper"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-            </label>
+            <div className="exam-vault-list-toolbar__controls">
+              <div className="exam-vault-list-toolbar__selects">
+                {effectiveMode === TEST_PAPER_MODES.CHAPTER_WISE ? (
+                  <label className="exam-vault-chapter-filter" htmlFor="paper-chapter-filter">
+                    <span>Chapter</span>
+                    <select
+                      id="paper-chapter-filter"
+                      value={chapterFilterValue}
+                      onChange={(event) =>
+                        navigate(
+                          routeBuilders.testPapers.chapter(
+                            subjectId,
+                            TEST_PAPER_MODES.CHAPTER_WISE,
+                            event.target.value || "all"
+                          )
+                        )
+                      }
+                    >
+                      <option value="all">All chapters</option>
+                      {chapters.map((chapter) => (
+                        <option key={chapter.id} value={chapter.id}>
+                          {chapter.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
 
-            {activeType === TEST_PAPER_TYPES.PYC ? (
-              <label className="exam-vault-year-filter" htmlFor="paper-year-filter">
-                <span>Year</span>
-                <select
-                  id="paper-year-filter"
-                  value={yearFilter}
-                  onChange={(event) => setYearFilter(event.target.value)}
-                >
-                  <option value="all">All</option>
-                  {availablePycYears.map((year) => (
-                    <option key={year} value={year}>
-                      {year}
-                    </option>
-                  ))}
-                </select>
+                <label className="exam-vault-year-filter" htmlFor="paper-year-filter">
+                  <span>Year</span>
+                  <select
+                    id="paper-year-filter"
+                    value={yearFilter}
+                    onChange={(event) => setYearFilter(event.target.value)}
+                  >
+                    <option value="all">All years</option>
+                    {availablePycYears.map((year) => (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="exam-vault-search-input exam-vault-search-input--toolbar" htmlFor="paper-search">
+                <Search size={16} aria-hidden="true" />
+                <input
+                  id="paper-search"
+                  type="search"
+                  placeholder="Search subject, chapter, or paper"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                />
               </label>
-            ) : null}
+            </div>
+          </div>
+
+          <div className="exam-vault-active-filters" aria-live="polite">
+            {activeFilterChips.map((chip) => (
+              <span key={chip} className="exam-vault-active-filter-chip">
+                {chip}
+              </span>
+            ))}
+            <button type="button" className="exam-vault-active-filters__clear" onClick={clearFilters}>
+              Reset filters
+            </button>
           </div>
 
           <PaperTabs
@@ -280,52 +386,16 @@ const TestPaperListPage = () => {
             onChange={setActiveType}
           />
 
-          {loading ? <Loader count={8} className="exam-vault-paper-grid" /> : null}
+          {loading ? <Loader count={7} className="exam-vault-table-skeleton" /> : null}
 
-          {!loading && error ? <p className="exam-vault-error-text">{error}</p> : null}
-
-          {!loading && !error && papers.length === 0 ? (
+          {!loading && error ? (
             <EmptyState
-              icon={Layers3}
-              title="No papers found for this selection"
-              description="Try switching to another chapter or full syllabus mode."
+              icon={AlertTriangle}
+              title="Unable to load papers"
+              description={error}
+              actionLabel="Retry"
+              onAction={loadPapers}
             />
-          ) : null}
-
-          {!loading && !error && savedPapers.length > 0 ? (
-            <section className="exam-vault-insight-block">
-              <header className="exam-vault-insight-block__head">
-                <h3>
-                  <BookMarked size={16} />
-                  Saved Papers
-                </h3>
-                <span>{savedPapers.length}</span>
-              </header>
-              <PaperList
-                papers={savedPapers}
-                bookmarkedPaperIds={bookmarkedPaperIdSet}
-                onOpenPaper={openPaper}
-                onToggleBookmark={toggleBookmark}
-              />
-            </section>
-          ) : null}
-
-          {!loading && !error && recentPapers.length > 0 ? (
-            <section className="exam-vault-insight-block">
-              <header className="exam-vault-insight-block__head">
-                <h3>
-                  <Clock3 size={16} />
-                  Recent Papers
-                </h3>
-                <span>{recentPapers.length}</span>
-              </header>
-              <PaperList
-                papers={recentPapers}
-                bookmarkedPaperIds={bookmarkedPaperIdSet}
-                onOpenPaper={openPaper}
-                onToggleBookmark={toggleBookmark}
-              />
-            </section>
           ) : null}
 
           {!loading && !error ? (

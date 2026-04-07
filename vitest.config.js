@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    include: ["src/**/*.integration.test.js"],
+    include: ["src/**/*.integration.test.{js,jsx}"],
     globals: false,
     clearMocks: true,
   },

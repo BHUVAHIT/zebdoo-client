@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { AlertTriangle, Search } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
 import SubjectCard from "../components/SubjectCard";
 import { TEST_PAPER_MODULE } from "../constants/paperTypes";
-import { routeBuilders } from "../routes/routePaths";
+import { routeBuilders, ROUTES } from "../routes/routePaths";
 import { testPaperService } from "../services/testPaperService";
 import "./testPapers.css";
 
@@ -52,24 +52,36 @@ const TestPaperSubjectsPage = () => {
     });
   }, [searchTerm, subjects]);
 
+  const activeSubjectLabel = useMemo(() => {
+    if (loading) return "Loading subjects...";
+    if (!searchTerm.trim()) return `${subjects.length} active subjects`;
+    return `${filteredSubjects.length} of ${subjects.length} subjects matched`;
+  }, [filteredSubjects.length, loading, searchTerm, subjects.length]);
+
   return (
     <section className="exam-vault-shell">
       <section className="exam-vault-page">
         <header className="exam-vault-hero">
-          <div className="exam-vault-breadcrumbs" aria-label="Breadcrumb">
-            <span>Student</span>
-            <span>/</span>
-            <strong>{TEST_PAPER_MODULE.name}</strong>
+          <div className="exam-vault-hero__top-row">
+            <div className="exam-vault-breadcrumbs" aria-label="Breadcrumb">
+              <Link to={ROUTES.student.dashboard} className="exam-vault-breadcrumb-link">
+                Dashboard
+              </Link>
+              <span>/</span>
+              <strong className="exam-vault-breadcrumb-current">{TEST_PAPER_MODULE.name}</strong>
+            </div>
+            <span className="exam-vault-info-chip">Live sync with Super Admin</span>
           </div>
+
           <p className="exam-vault-hero__kicker">{TEST_PAPER_MODULE.name}</p>
-          <h1>Practice with confidence, attempt with precision.</h1>
+          <h1>Choose your subject and start targeted practice.</h1>
           <p>{TEST_PAPER_MODULE.subtitle}</p>
         </header>
 
         <section className="exam-vault-subjects-shell" aria-label="Subjects">
           <div className="exam-vault-subjects-shell__header">
             <h2>Choose Your Subject</h2>
-            <span>{subjects.length} active subjects</span>
+            <span>{activeSubjectLabel}</span>
           </div>
 
           <label className="exam-vault-search-input" htmlFor="subject-search">
@@ -85,7 +97,15 @@ const TestPaperSubjectsPage = () => {
 
           {loading ? <Loader count={8} className="exam-vault-subject-grid" /> : null}
 
-          {!loading && error ? <p className="exam-vault-error-text">{error}</p> : null}
+          {!loading && error ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Unable to load subjects"
+              description={error}
+              actionLabel="Retry"
+              onAction={loadSubjects}
+            />
+          ) : null}
 
           {!loading && !error && subjects.length === 0 ? (
             <EmptyState
