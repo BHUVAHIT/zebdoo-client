@@ -13,12 +13,16 @@ import {
   TEST_PAPER_TYPE_OPTIONS,
   normalizePaperType,
 } from "../constants/paperTypes";
+import { infrastructureApiClient } from "../infrastructure/apiClient";
 
 const STORAGE_KEY = "zebdoo:test-papers:v1";
 const STORAGE_SYNC_KEY = "zebdoo:test-papers:sync:v1";
 const CHANGE_EVENT_NAME = "zebdoo:test-papers:changed";
 const LATENCY_MIN_MS = 180;
 const LATENCY_MAX_MS = 460;
+const UPLOAD_ENDPOINT = String(import.meta.env.VITE_TEST_PAPER_UPLOAD_ENDPOINT || "").trim();
+const MOCK_UPLOAD_FALLBACK_URL =
+  "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
 
 const randomLatency = () =>
   LATENCY_MIN_MS + Math.floor(Math.random() * (LATENCY_MAX_MS - LATENCY_MIN_MS + 1));
@@ -46,6 +50,9 @@ const normalizeMode = (value) => {
 };
 
 const normalizeUrl = (value) => normalizeText(value);
+
+const normalizePaperTypeValue = (paper) =>
+  normalizePaperType(paper?.paperType || paper?.type);
 
 const isValidHttpUrl = (value) => {
   try {
@@ -141,17 +148,37 @@ const comparePapers = (left, right) => {
   return String(left.title || "").localeCompare(String(right.title || ""));
 };
 
+const getPaperDifficulty = (paper) => {
+  const year = Number(paper?.year || new Date().getFullYear());
+  const currentYear = new Date().getFullYear();
+  const yearGap = Math.max(0, currentYear - year);
+
+  if (paper?.type === TEST_PAPER_TYPES.MTP) return "Hard";
+  if (paper?.type === TEST_PAPER_TYPES.RTP) return "Medium";
+  if (paper?.type === TEST_PAPER_TYPES.OTHER || paper?.type === TEST_PAPER_TYPES.OTHERS) {
+    return "Easy";
+  }
+
+  if (yearGap <= 2) return "Hard";
+  if (yearGap <= 5) return "Medium";
+  return "Easy";
+};
+
 const enrichPaper = (paper, subjectMap, chapterMapBySubject) => {
   const subject = subjectMap[paper.subjectId] || null;
   const chapterMap = chapterMapBySubject[paper.subjectId] || {};
   const chapter = paper.chapterId ? chapterMap[paper.chapterId] || null : null;
+  const normalizedType = normalizePaperTypeValue(paper);
 
   return {
     ...paper,
+    type: normalizedType,
+    paperType: normalizedType,
     subjectName: subject?.name || "Unknown Subject",
     subjectCode: subject?.code || "SUB",
     chapterName: chapter?.title || "Full Syllabus",
-    typeLabel: TEST_PAPER_TYPE_META[normalizePaperType(paper.type)]?.shortLabel || "OTHERS",
+    typeLabel: TEST_PAPER_TYPE_META[normalizedType]?.shortLabel || "OTHER",
+    difficulty: getPaperDifficulty(paper),
   };
 };
 
@@ -161,8 +188,10 @@ const validateAndNormalizePayload = (payload, { allowPartial = false } = {}) => 
   const chapterId = normalizeText(payload?.chapterId);
   const title = normalizeText(payload?.title);
   const pdfUrl = normalizeUrl(payload?.pdfUrl);
-  const type = normalizePaperType(payload?.type);
+  const type = normalizePaperType(payload?.paperType || payload?.type);
   const year = normalizeYear(payload?.year);
+  const pdfFileName = normalizeText(payload?.pdfFileName);
+  const pdfFileSize = Number(payload?.pdfFileSize);
   const { min, max } = getYearRange();
 
   if (!allowPartial || Object.prototype.hasOwnProperty.call(payload || {}, "subjectId")) {
@@ -183,10 +212,16 @@ const validateAndNormalizePayload = (payload, { allowPartial = false } = {}) => 
     }
   }
 
-  if (!allowPartial || Object.prototype.hasOwnProperty.call(payload || {}, "year")) {
+  if (type === TEST_PAPER_TYPES.PYC || (!allowPartial && !Object.prototype.hasOwnProperty.call(payload || {}, "year"))) {
     if (!Number.isFinite(year) || year < min || year > max) {
       throw new Error(`Year should be between ${min} and ${max}.`);
     }
+  } else if (
+    Object.prototype.hasOwnProperty.call(payload || {}, "year") &&
+    Number.isFinite(year) &&
+    (year < min || year > max)
+  ) {
+    throw new Error(`Year should be between ${min} and ${max}.`);
   }
 
   if (!allowPartial || Object.prototype.hasOwnProperty.call(payload || {}, "pdfUrl")) {
@@ -200,9 +235,12 @@ const validateAndNormalizePayload = (payload, { allowPartial = false } = {}) => 
     chapterId: scope === TEST_PAPER_SCOPES.CHAPTER_WISE ? chapterId : null,
     scope,
     type,
-    year,
+    paperType: type,
+    year: Number.isFinite(year) ? year : new Date().getFullYear(),
     title,
     pdfUrl,
+    pdfFileName: pdfFileName || null,
+    pdfFileSize: Number.isFinite(pdfFileSize) ? Math.max(Math.trunc(pdfFileSize), 0) : 0,
   };
 };
 
@@ -327,6 +365,7 @@ export const testPaperService = {
       const subjectId = normalizeText(filters.subjectId);
       const scope = normalizeText(filters.scope).toUpperCase();
       const type = normalizeText(filters.type).toUpperCase();
+      const paperType = normalizeText(filters.paperType).toUpperCase();
       const year = normalizeText(filters.year);
 
       const subjectMap = getSubjectMap();
@@ -340,7 +379,9 @@ export const testPaperService = {
         .filter((paper) => {
           if (subjectId && paper.subjectId !== subjectId) return false;
           if (scope && paper.scope !== scope) return false;
-          if (type && paper.type !== type) return false;
+          const normalizedType = normalizePaperTypeValue(paper);
+          if (type && normalizedType !== normalizePaperType(type)) return false;
+          if (paperType && normalizedType !== normalizePaperType(paperType)) return false;
           if (year && String(paper.year) !== year) return false;
 
           if (search) {
@@ -349,6 +390,7 @@ export const testPaperService = {
               paper.subjectName,
               paper.chapterName,
               paper.type,
+              paper.paperType,
               paper.year,
             ]
               .join(" ")
@@ -386,6 +428,7 @@ export const testPaperService = {
       const next = {
         id: buildDraftId(),
         ...normalized,
+        type: normalized.type,
         createdAt: now,
         updatedAt: now,
       };
@@ -424,6 +467,7 @@ export const testPaperService = {
       db[index] = {
         ...db[index],
         ...normalized,
+        type: normalized.type,
         updatedAt: new Date().toISOString(),
       };
 
@@ -446,6 +490,77 @@ export const testPaperService = {
         success: true,
       };
     }),
+
+  uploadPaperFile: async (file, options = {}) => {
+    if (!(file instanceof File)) {
+      throw new Error("Please select a valid PDF file.");
+    }
+
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) {
+      throw new Error("Only PDF files are supported.");
+    }
+
+    const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+
+    if (UPLOAD_ENDPOINT) {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await infrastructureApiClient.post(UPLOAD_ENDPOINT, formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          onUploadProgress: (event) => {
+            if (!onProgress || !event.total) return;
+            const progress = Math.min(Math.round((event.loaded * 100) / event.total), 100);
+            onProgress(progress);
+          },
+        });
+
+        const uploadedUrl = normalizeUrl(
+          response?.data?.url ||
+            response?.data?.fileUrl ||
+            response?.data?.secureUrl ||
+            response?.data?.location
+        );
+
+        if (!isValidHttpUrl(uploadedUrl)) {
+          throw new Error("Upload endpoint did not return a valid file URL.");
+        }
+
+        onProgress?.(100);
+
+        return {
+          url: uploadedUrl,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || "application/pdf",
+          provider: "backend",
+        };
+      } catch (uploadError) {
+        throw new Error(uploadError?.message || "PDF upload failed. Please try again.");
+      }
+    }
+
+    const checkpoints = [14, 32, 48, 67, 82, 96, 100];
+    for (const checkpoint of checkpoints) {
+      await delay(90);
+      onProgress?.(checkpoint);
+    }
+
+    const encodedFileName = encodeURIComponent(file.name.toLowerCase().replace(/\s+/g, "-"));
+    const mockUrl = `${MOCK_UPLOAD_FALLBACK_URL}?file=${encodedFileName}&size=${file.size}`;
+
+    return {
+      url: mockUrl,
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type || "application/pdf",
+      provider: "mock-storage",
+    };
+  },
 
   subscribeToChanges: (callback) => {
     if (typeof callback !== "function" || typeof window === "undefined") {

@@ -198,7 +198,7 @@ const reasoningQuestions = [
   }),
 ];
 
-const questionBankBySubjectId = {
+const questionSetBySubjectId = {
   1: generateMathQuestions(120),
   2: scienceQuestions,
   3: historyQuestions,
@@ -223,25 +223,10 @@ export const getSubjects = async () =>
   withMockNetwork(() =>
     subjects.map((subject) => ({
       ...subject,
-      questionCount: questionBankBySubjectId[subject.id]?.length ?? 0,
+      questionCount: questionSetBySubjectId[subject.id]?.length ?? 0,
       durationSeconds: subject.durationSeconds ?? DEFAULT_TEST_DURATION_SECONDS,
     }))
   );
-
-export const getQuestions = async (subjectId) => {
-  const subject = getSubjectById(subjectId);
-  if (!subject) {
-    throw new Error("Subject not found.");
-  }
-
-  return withMockNetwork(() => {
-    const questions = questionBankBySubjectId[subject.id] || [];
-    if (!questions.length) {
-      throw new Error("No questions are available for this subject.");
-    }
-    return questions;
-  });
-};
 
 export const submitTest = async (payload) => {
   if (!payload?.subjectId) {
@@ -253,7 +238,7 @@ export const submitTest = async (payload) => {
     throw new Error("Invalid subject selected.");
   }
 
-  const questions = questionBankBySubjectId[subject.id] ?? [];
+  const questions = questionSetBySubjectId[subject.id] ?? [];
   const answers = payload.answers && typeof payload.answers === "object" ? payload.answers : {};
   const { evaluated, summary } = evaluateAnswers(questions, answers);
 

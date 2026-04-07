@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   TEST_PAPER_SCOPES,
-  TEST_PAPER_SCOPE_OPTIONS,
-  TEST_PAPER_TYPE_OPTIONS,
+  TEST_PAPER_TYPES,
+  normalizePaperType,
 } from "../constants/paperTypes";
 import { ROUTES } from "../routes/routePaths";
 import { testPaperService } from "../services/testPaperService";
 import { useAppToast } from "../components/notifications/useAppToast";
+import { PageHeader } from "./components/AdminUiKit";
+import PaperForm from "./components/PaperForm";
 import "./testPaperAdmin.css";
 
 const getDefaultYear = () => new Date().getFullYear();
@@ -16,10 +18,13 @@ const createInitialState = () => ({
   subjectId: "",
   chapterId: "",
   scope: TEST_PAPER_SCOPES.CHAPTER_WISE,
-  type: TEST_PAPER_TYPE_OPTIONS[0]?.value || "PYC",
+  paperType: TEST_PAPER_TYPES.PYC,
   year: getDefaultYear(),
   title: "",
   pdfUrl: "",
+  pdfFileName: "",
+  pdfFileSize: 0,
+  pdfMimeType: "application/pdf",
 });
 
 const AddEditTestPaperForm = () => {
@@ -61,10 +66,13 @@ const AddEditTestPaperForm = () => {
         subjectId: paper.subjectId,
         chapterId: paper.chapterId || "",
         scope: paper.scope,
-        type: paper.type,
-        year: paper.year,
+        paperType: normalizePaperType(paper.paperType || paper.type),
+        year: paper.year || getDefaultYear(),
         title: paper.title,
         pdfUrl: paper.pdfUrl,
+        pdfFileName: paper.pdfFileName || "",
+        pdfFileSize: paper.pdfFileSize || 0,
+        pdfMimeType: paper.pdfMimeType || "application/pdf",
       });
     } catch (loadError) {
       setError(loadError.message || "Unable to load form data.");
@@ -89,6 +97,15 @@ const AddEditTestPaperForm = () => {
     }
   }, [form.chapterId, form.scope]);
 
+  useEffect(() => {
+    if (form.paperType !== TEST_PAPER_TYPES.PYC && !form.year) {
+      setForm((prev) => ({
+        ...prev,
+        year: getDefaultYear(),
+      }));
+    }
+  }, [form.paperType, form.year]);
+
   const validateForm = () => {
     const nextErrors = {};
 
@@ -104,19 +121,16 @@ const AddEditTestPaperForm = () => {
       nextErrors.title = "Title must contain at least 5 characters.";
     }
 
-    const year = Number(form.year);
-    const current = new Date().getFullYear();
-    if (!Number.isFinite(year) || year < 1990 || year > current + 1) {
-      nextErrors.year = `Year must be between 1990 and ${current + 1}.`;
+    if (form.paperType === TEST_PAPER_TYPES.PYC) {
+      const year = Number(form.year);
+      const current = new Date().getFullYear();
+      if (!Number.isFinite(year) || year < 1990 || year > current + 1) {
+        nextErrors.year = `Year must be between 1990 and ${current + 1}.`;
+      }
     }
 
-    try {
-      const parsed = new URL(form.pdfUrl);
-      if (!["http:", "https:"].includes(parsed.protocol)) {
-        nextErrors.pdfUrl = "PDF URL should start with http:// or https://.";
-      }
-    } catch {
-      nextErrors.pdfUrl = "Enter a valid PDF URL.";
+    if (!form.pdfUrl) {
+      nextErrors.pdfUrl = "Please upload a PDF file.";
     }
 
     setErrors(nextErrors);
@@ -133,10 +147,24 @@ const AddEditTestPaperForm = () => {
     setSubmitting(true);
 
     try {
+      const payload = {
+        subjectId: form.subjectId,
+        chapterId: form.chapterId,
+        scope: form.scope,
+        paperType: form.paperType,
+        type: form.paperType,
+        year: form.paperType === TEST_PAPER_TYPES.PYC ? Number(form.year) : Number(form.year || getDefaultYear()),
+        title: form.title,
+        pdfUrl: form.pdfUrl,
+        pdfFileName: form.pdfFileName,
+        pdfFileSize: form.pdfFileSize,
+        pdfMimeType: form.pdfMimeType,
+      };
+
       if (isEditMode) {
-        await testPaperService.updatePaper(id, form);
+        await testPaperService.updatePaper(id, payload);
       } else {
-        await testPaperService.createPaper(form);
+        await testPaperService.createPaper(payload);
       }
 
       pushToast({
@@ -159,10 +187,17 @@ const AddEditTestPaperForm = () => {
 
   if (loading) {
     return (
-      <section className="tp-admin-page">
-        <div className="tp-admin-loading-grid">
-          {Array.from({ length: 8 }, (_, index) => (
-            <span key={`form-loader-${index}`} className="tp-admin-loading-bar" />
+      <section className="tp-admin-theme tp-admin-page space-y-5">
+        <PageHeader
+          title={isEditMode ? "Edit Test Paper" : "Create Test Paper"}
+          subtitle="Upload and manage student test papers"
+          backTo={ROUTES.admin.testPapers}
+          backLabel="Back"
+        />
+
+        <div className="grid gap-3 rounded-3xl border border-[#e5e7eb] bg-[#f8fafc] p-4 sm:p-6">
+          {Array.from({ length: 6 }, (_, index) => (
+            <span key={`form-loader-${index}`} className="tp-admin-loading-bar h-12" />
           ))}
         </div>
       </section>
@@ -170,135 +205,45 @@ const AddEditTestPaperForm = () => {
   }
 
   return (
-    <section className="tp-admin-page">
-      <header className="tp-admin-hero">
-        <div>
-          <p>Exam Vault Admin</p>
-          <h1>{isEditMode ? "Edit Test Paper" : "Add Test Paper"}</h1>
-          <span>Map paper metadata for student-ready discovery.</span>
-        </div>
-
-        <Link to={ROUTES.admin.testPapers} className="tp-admin-hero__ghost">
-          Back to list
-        </Link>
-      </header>
+    <section className="tp-admin-theme tp-admin-page space-y-5 pb-10">
+      <PageHeader
+        title={isEditMode ? "Edit Test Paper" : "Create Test Paper"}
+        subtitle="Upload and manage student test papers"
+        backTo={ROUTES.admin.testPapers}
+        backLabel="Back"
+      />
 
       {error ? <p className="tp-admin-error">{error}</p> : null}
 
-      <form className="tp-admin-form" onSubmit={handleSubmit} noValidate>
-        <label>
-          <span>Subject</span>
-          <select
-            value={form.subjectId}
-            onChange={(event) =>
-              setForm((prev) => ({ ...prev, subjectId: event.target.value, chapterId: "" }))
-            }
-          >
-            <option value="">Select subject</option>
-            {options.subjects.map((subject) => (
-              <option key={subject.value} value={subject.value}>
-                {subject.label}
-              </option>
-            ))}
-          </select>
-          {errors.subjectId ? <small>{errors.subjectId}</small> : null}
-        </label>
-
-        <label>
-          <span>Scope</span>
-          <select
-            value={form.scope}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                scope: event.target.value,
-                chapterId:
-                  event.target.value === TEST_PAPER_SCOPES.FULL_SYLLABUS ? "" : prev.chapterId,
-              }))
-            }
-          >
-            {TEST_PAPER_SCOPE_OPTIONS.map((scopeOption) => (
-              <option key={scopeOption.value} value={scopeOption.value}>
-                {scopeOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span>Chapter</span>
-          <select
-            value={form.chapterId}
-            disabled={form.scope === TEST_PAPER_SCOPES.FULL_SYLLABUS}
-            onChange={(event) =>
-              setForm((prev) => ({ ...prev, chapterId: event.target.value }))
-            }
-          >
-            <option value="">Select chapter</option>
-            {chapterOptions.map((chapter) => (
-              <option key={chapter.value} value={chapter.value}>
-                {chapter.label}
-              </option>
-            ))}
-          </select>
-          {errors.chapterId ? <small>{errors.chapterId}</small> : null}
-        </label>
-
-        <label>
-          <span>Paper Type</span>
-          <select
-            value={form.type}
-            onChange={(event) => setForm((prev) => ({ ...prev, type: event.target.value }))}
-          >
-            {TEST_PAPER_TYPE_OPTIONS.map((typeOption) => (
-              <option key={typeOption.value} value={typeOption.value}>
-                {typeOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span>Year</span>
-          <input
-            type="number"
-            min="1990"
-            max={String(new Date().getFullYear() + 1)}
-            value={form.year}
-            onChange={(event) => setForm((prev) => ({ ...prev, year: event.target.value }))}
-          />
-          {errors.year ? <small>{errors.year}</small> : null}
-        </label>
-
-        <label className="tp-admin-form__full">
-          <span>Paper Title</span>
-          <input
-            type="text"
-            value={form.title}
-            placeholder="Enter student-facing paper title"
-            onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-          />
-          {errors.title ? <small>{errors.title}</small> : null}
-        </label>
-
-        <label className="tp-admin-form__full">
-          <span>PDF URL</span>
-          <input
-            type="url"
-            value={form.pdfUrl}
-            placeholder="https://example.com/paper.pdf"
-            onChange={(event) => setForm((prev) => ({ ...prev, pdfUrl: event.target.value }))}
-          />
-          {errors.pdfUrl ? <small>{errors.pdfUrl}</small> : null}
-        </label>
-
-        <div className="tp-admin-form__actions">
-          <Link to={ROUTES.admin.testPapers}>Cancel</Link>
-          <button type="submit" disabled={submitting}>
-            {submitting ? "Saving..." : isEditMode ? "Update Paper" : "Create Paper"}
-          </button>
-        </div>
-      </form>
+      <PaperForm
+        isEditMode={isEditMode}
+        form={form}
+        errors={errors}
+        subjects={options.subjects}
+        chapterOptions={chapterOptions}
+        submitting={submitting}
+        onPatch={(patch) => {
+          setForm((prev) => ({ ...prev, ...patch }));
+          setErrors((prev) => {
+            const next = { ...prev };
+            Object.keys(patch || {}).forEach((key) => {
+              delete next[key];
+            });
+            return next;
+          });
+        }}
+        onSubmit={handleSubmit}
+        onCancel={() => navigate(ROUTES.admin.testPapers)}
+        onUploadFile={async (file, uploadOptions) => {
+          const uploaded = await testPaperService.uploadPaperFile(file, uploadOptions);
+          pushToast({
+            title: "PDF uploaded",
+            message: "Your file is ready and linked to this paper.",
+            tone: "success",
+          });
+          return uploaded;
+        }}
+      />
     </section>
   );
 };

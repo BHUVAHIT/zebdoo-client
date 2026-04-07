@@ -1,29 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { PencilLine, Plus, Trash2 } from "lucide-react";
-import {
-  TEST_PAPER_SCOPES,
-  TEST_PAPER_TYPE_OPTIONS,
-} from "../constants/paperTypes";
-import { routeBuilders, ROUTES } from "../routes/routePaths";
+import { Plus } from "lucide-react";
+import FilterBar from "./components/FilterBar";
+import PaperTable from "./components/PaperTable";
+import ConfirmDialog from "../modules/superAdmin/components/ConfirmDialog";
+import { TEST_PAPER_TYPES } from "../constants/paperTypes";
+import { ROUTES } from "../routes/routePaths";
 import { testPaperService } from "../services/testPaperService";
 import { useAppToast } from "../components/notifications/useAppToast";
+import { PageHeader } from "./components/AdminUiKit";
 import "./testPaperAdmin.css";
 
 const initialFilters = {
   search: "",
   subjectId: "",
-  type: "",
   scope: "",
+  paperType: "",
   year: "",
 };
+
+const PAGE_SIZE_OPTIONS = Object.freeze([10, 20, 50]);
 
 const ManageTestPapersPage = () => {
   const { pushToast } = useAppToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [filters, setFilters] = useState(initialFilters);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [formOptions, setFormOptions] = useState({
     subjects: [],
   });
@@ -34,7 +41,13 @@ const ManageTestPapersPage = () => {
 
     try {
       const [papersResponse, optionsResponse] = await Promise.all([
-        testPaperService.listPapersForAdmin(filters),
+        testPaperService.listPapersForAdmin({
+          search: filters.search,
+          subjectId: filters.subjectId,
+          scope: filters.scope,
+          paperType: filters.paperType,
+          year: filters.year,
+        }),
         testPaperService.getFormOptions(),
       ]);
 
@@ -60,21 +73,40 @@ const ManageTestPapersPage = () => {
   }, [loadData]);
 
   const uniqueYears = useMemo(() => {
-    const years = new Set(items.map((item) => String(item.year)));
+    const years = new Set(
+      items
+        .filter((item) => (item.paperType || item.type) === TEST_PAPER_TYPES.PYC)
+        .map((item) => String(item.year))
+        .filter(Boolean)
+    );
     return [...years].sort((left, right) => Number(right) - Number(left));
   }, [items]);
 
-  const handleDelete = async (id, title) => {
-    const allow = window.confirm(`Delete paper "${title}"? This action cannot be undone.`);
-    if (!allow) return;
+  const totalItems = items.length;
+  const totalPages = Math.max(Math.ceil(totalItems / pageSize), 1);
+
+  useEffect(() => {
+    setPage((currentPage) => Math.min(currentPage, totalPages));
+  }, [totalPages]);
+
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return items.slice(start, start + pageSize);
+  }, [items, page, pageSize]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id || deleteBusy) return;
+
+    setDeleteBusy(true);
 
     try {
-      await testPaperService.deletePaper(id);
+      await testPaperService.deletePaper(deleteTarget.id);
       pushToast({
         title: "Paper deleted",
         message: "The paper has been removed from student and admin views.",
         tone: "success",
       });
+      setDeleteTarget(null);
       loadData();
     } catch (deleteError) {
       pushToast({
@@ -82,188 +114,76 @@ const ManageTestPapersPage = () => {
         message: deleteError.message || "Could not delete paper.",
         tone: "error",
       });
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
+  const handleFilterChange = (partial) => {
+    setFilters((prev) => ({ ...prev, ...partial }));
+    setPage(1);
+  };
+
   return (
-    <section className="tp-admin-page">
-      <header className="tp-admin-hero">
-        <div>
-          <p>Exam Vault Admin</p>
-          <h1>Manage Test Papers</h1>
-          <span>Create and map PYC, MTP, RTP, and other paper sets in one place.</span>
-        </div>
-
-        <Link to={ROUTES.admin.testPapersCreate} className="tp-admin-hero__cta">
-          <Plus size={16} />
-          <span>Add Paper</span>
-        </Link>
-      </header>
-
-      <section className="tp-admin-filters" aria-label="Filters">
-        <label>
-          <span>Search</span>
-          <input
-            type="search"
-            value={filters.search}
-            placeholder="Search by title, subject, chapter"
-            onChange={(event) =>
-              setFilters((prev) => ({ ...prev, search: event.target.value }))
-            }
-          />
-        </label>
-
-        <label>
-          <span>Subject</span>
-          <select
-            value={filters.subjectId}
-            onChange={(event) =>
-              setFilters((prev) => ({ ...prev, subjectId: event.target.value }))
-            }
+    <section className="tp-admin-theme tp-admin-page space-y-5 pb-10">
+      <PageHeader
+        title="Manage Test Papers"
+        subtitle="Search, filter, and maintain PYC, MTP, RTP, and other student-visible paper sets."
+        action={
+          <Link
+            to={ROUTES.admin.testPapersCreate}
+            className="inline-flex items-center gap-2 rounded-xl bg-[#4f46e5] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_28px_-20px_rgba(79,70,229,0.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#4338ca]"
           >
-            <option value="">All subjects</option>
-            {formOptions.subjects.map((subject) => (
-              <option key={subject.value} value={subject.value}>
-                {subject.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <Plus size={16} />
+            <span>Add Paper</span>
+          </Link>
+        }
+      />
 
-        <label>
-          <span>Type</span>
-          <select
-            value={filters.type}
-            onChange={(event) => setFilters((prev) => ({ ...prev, type: event.target.value }))}
-          >
-            <option value="">All types</option>
-            {TEST_PAPER_TYPE_OPTIONS.map((typeOption) => (
-              <option key={typeOption.value} value={typeOption.value}>
-                {typeOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span>Scope</span>
-          <select
-            value={filters.scope}
-            onChange={(event) => setFilters((prev) => ({ ...prev, scope: event.target.value }))}
-          >
-            <option value="">All scopes</option>
-            <option value={TEST_PAPER_SCOPES.CHAPTER_WISE}>Chapter Wise</option>
-            <option value={TEST_PAPER_SCOPES.FULL_SYLLABUS}>Full Syllabus</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Year</span>
-          <select
-            value={filters.year}
-            onChange={(event) => setFilters((prev) => ({ ...prev, year: event.target.value }))}
-          >
-            <option value="">All years</option>
-            {uniqueYears.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <FilterBar
+        filters={filters}
+        subjects={formOptions.subjects}
+        years={uniqueYears}
+        onChange={handleFilterChange}
+        onReset={() => {
+          setFilters(initialFilters);
+          setPage(1);
+        }}
+      />
 
       {error ? <p className="tp-admin-error">{error}</p> : null}
 
-      <section className="tp-admin-table-shell" aria-label="Test paper list">
-        {loading ? (
-          <div className="tp-admin-loading-grid">
-            {Array.from({ length: 8 }, (_, index) => (
-              <span key={`loader-${index}`} className="tp-admin-loading-bar" />
-            ))}
-          </div>
-        ) : null}
+      <PaperTable
+        loading={loading}
+        items={pagedItems}
+        totalItems={totalItems}
+        currentPage={page}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={(nextPageSize) => {
+          setPageSize(nextPageSize);
+          setPage(1);
+        }}
+        onViewPaper={(item) => {
+          if (!item?.pdfUrl || typeof window === "undefined") return;
+          window.open(item.pdfUrl, "_blank", "noopener,noreferrer");
+        }}
+        onRequestDelete={setDeleteTarget}
+      />
 
-        {!loading && items.length === 0 ? (
-          <article className="tp-admin-empty-state">
-            <h2>No test papers found</h2>
-            <p>Adjust filters or add your first paper.</p>
-          </article>
-        ) : null}
-
-        {!loading && items.length > 0 ? (
-          <>
-            <div className="tp-admin-table-wrap">
-              <table className="tp-admin-table">
-                <thead>
-                  <tr>
-                    <th>Year</th>
-                    <th>Title</th>
-                    <th>Subject</th>
-                    <th>Chapter</th>
-                    <th>Type</th>
-                    <th>Scope</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id}>
-                      <td>{item.year}</td>
-                      <td>{item.title}</td>
-                      <td>{item.subjectName}</td>
-                      <td>{item.chapterName}</td>
-                      <td>{item.type}</td>
-                      <td>{item.scope === TEST_PAPER_SCOPES.CHAPTER_WISE ? "Chapter" : "Syllabus"}</td>
-                      <td>
-                        <div className="tp-admin-row-actions">
-                          <Link
-                            to={routeBuilders.admin.testPapersEdit(item.id)}
-                            aria-label={`Edit ${item.title}`}
-                          >
-                            <PencilLine size={14} />
-                            <span>Edit</span>
-                          </Link>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id, item.title)}
-                            aria-label={`Delete ${item.title}`}
-                          >
-                            <Trash2 size={14} />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="tp-admin-mobile-list">
-              {items.map((item) => (
-                <article key={`mobile-${item.id}`} className="tp-admin-mobile-card">
-                  <h3>{item.title}</h3>
-                  <p>{item.subjectName} | {item.chapterName}</p>
-                  <small>{item.type} | {item.year}</small>
-
-                  <div className="tp-admin-row-actions">
-                    <Link to={routeBuilders.admin.testPapersEdit(item.id)}>
-                      <PencilLine size={14} />
-                      <span>Edit</span>
-                    </Link>
-                    <button type="button" onClick={() => handleDelete(item.id, item.title)}>
-                      <Trash2 size={14} />
-                      <span>Delete</span>
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </>
-        ) : null}
-      </section>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete Test Paper"
+        message={`Delete paper "${deleteTarget?.title || "this paper"}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        onCancel={() => {
+          if (deleteBusy) return;
+          setDeleteTarget(null);
+        }}
+        onConfirm={handleDelete}
+        busy={deleteBusy}
+      />
     </section>
   );
 };

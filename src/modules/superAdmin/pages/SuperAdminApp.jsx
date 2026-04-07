@@ -26,9 +26,6 @@ const TestsManagementPage = lazy(() =>
 const QuestionsManagementPage = lazy(() =>
   import("../../admin/management/pages/QuestionsManagementPage")
 );
-const QuestionBankManagementPage = lazy(() =>
-  import("../../admin/management/pages/QuestionBankManagementPage")
-);
 const ManageTestPapersPage = lazy(() => import("../../../admin-pages/ManageTestPapersPage"));
 const AddEditTestPaperForm = lazy(() => import("../../../admin-pages/AddEditTestPaperForm"));
 
@@ -97,7 +94,6 @@ const SuperAdminApp = () => {
             path="questions"
             element={<QuestionsManagementPage onDataChange={refreshMetrics} />}
           />
-          <Route path="question-bank" element={<QuestionBankManagementPage />} />
           <Route path="*" element={<Navigate to={ROUTES.admin.dashboard} replace />} />
         </Routes>
       </Suspense>

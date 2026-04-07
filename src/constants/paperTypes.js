@@ -18,6 +18,7 @@ export const TEST_PAPER_TYPES = Object.freeze({
   PYC: "PYC",
   MTP: "MTP",
   RTP: "RTP",
+  OTHER: "OTHER",
   OTHERS: "OTHERS",
 });
 
@@ -40,10 +41,16 @@ export const TEST_PAPER_TYPE_META = Object.freeze({
     shortLabel: "RTP",
     description: "Focused revision before final attempts.",
   },
-  [TEST_PAPER_TYPES.OTHERS]: {
-    value: TEST_PAPER_TYPES.OTHERS,
+  [TEST_PAPER_TYPES.OTHER]: {
+    value: TEST_PAPER_TYPES.OTHER,
     label: "Other Practice Papers",
-    shortLabel: "OTHERS",
+    shortLabel: "OTHER",
+    description: "Practice sets, sample papers, and special compilations.",
+  },
+  [TEST_PAPER_TYPES.OTHERS]: {
+    value: TEST_PAPER_TYPES.OTHER,
+    label: "Other Practice Papers",
+    shortLabel: "OTHER",
     description: "Practice sets, sample papers, and special compilations.",
   },
 });
@@ -52,7 +59,7 @@ export const TEST_PAPER_TYPE_ORDER = Object.freeze([
   TEST_PAPER_TYPES.PYC,
   TEST_PAPER_TYPES.MTP,
   TEST_PAPER_TYPES.RTP,
-  TEST_PAPER_TYPES.OTHERS,
+  TEST_PAPER_TYPES.OTHER,
 ]);
 
 export const TEST_PAPER_SCOPE_OPTIONS = Object.freeze([
@@ -72,8 +79,13 @@ export const TEST_PAPER_TYPE_OPTIONS = TEST_PAPER_TYPE_ORDER.map((type) => ({
 
 export const normalizePaperType = (value) => {
   const normalized = String(value || "").trim().toUpperCase();
-  return TEST_PAPER_TYPE_META[normalized] ? normalized : TEST_PAPER_TYPES.OTHERS;
+
+  if (normalized === TEST_PAPER_TYPES.OTHERS) {
+    return TEST_PAPER_TYPES.OTHER;
+  }
+
+  return TEST_PAPER_TYPE_META[normalized] ? normalized : TEST_PAPER_TYPES.OTHER;
 };
 
 export const getPaperTypeMeta = (value) =>
-  TEST_PAPER_TYPE_META[normalizePaperType(value)] || TEST_PAPER_TYPE_META[TEST_PAPER_TYPES.OTHERS];
+  TEST_PAPER_TYPE_META[normalizePaperType(value)] || TEST_PAPER_TYPE_META[TEST_PAPER_TYPES.OTHER];

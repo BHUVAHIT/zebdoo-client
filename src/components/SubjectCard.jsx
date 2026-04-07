@@ -6,6 +6,7 @@ import {
   Calculator,
   Scale,
 } from "lucide-react";
+import { memo } from "react";
 
 const ICONS = [
   Calculator,
@@ -51,4 +52,4 @@ const SubjectCard = ({ subject, index = 0, onSelect }) => {
   );
 };
 
-export default SubjectCard;
+export default memo(SubjectCard);

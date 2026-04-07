@@ -39,7 +39,6 @@ export const ROUTES = Object.freeze({
     chapters: "/admin/chapters",
     tests: "/admin/tests",
     questions: "/admin/questions",
-    questionBank: "/admin/question-bank",
     testPapers: "/admin/test-papers",
     testPapersCreate: "/admin/test-papers/create",
     testPapersEdit: "/admin/test-papers/edit/:id",

@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const ChapterCard = ({ chapter, selected = false, onSelect }) => {
   return (
     <button
@@ -12,4 +14,4 @@ const ChapterCard = ({ chapter, selected = false, onSelect }) => {
   );
 };
 
-export default ChapterCard;
+export default memo(ChapterCard);
