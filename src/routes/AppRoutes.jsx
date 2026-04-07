@@ -60,6 +60,13 @@ const AppRoutes = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const hasStoredToken =
+    typeof window !== "undefined" &&
+    Boolean(window.localStorage.getItem(AUTH_STORAGE_KEYS.accessToken));
+  const hasStoredUser =
+    typeof window !== "undefined" &&
+    Boolean(window.localStorage.getItem(AUTH_STORAGE_KEYS.user));
+  const awaitingSessionRestore = !token && !user && hasStoredToken && hasStoredUser;
 
   useEffect(() => {
     loadUser();
@@ -110,6 +117,15 @@ const AppRoutes = () => {
   useEffect(() => {
     setActiveRoute(`${location.pathname}${location.search}${location.hash}`);
   }, [location.hash, location.pathname, location.search, setActiveRoute]);
+
+  if (awaitingSessionRestore) {
+    return (
+      <RouteLoadingScreen
+        label="Restoring your workspace..."
+        hint="Syncing your session and role-aware routes."
+      />
+    );
+  }
 
   return (
     <Routes>

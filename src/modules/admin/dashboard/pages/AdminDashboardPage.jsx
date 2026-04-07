@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { adminDashboardService } from "../../../shared/services/adminDashboard.service";
+import {
+  CardGridSkeleton,
+  InlineLoadingNotice,
+  TableSkeleton,
+} from "../../../../components/loading/LoadingPrimitives";
 import "../adminDashboard.css";
 
 const AdminDashboardPage = () => {
@@ -52,7 +57,34 @@ const AdminDashboardPage = () => {
   }, [loadInsights]);
 
   if (loading) {
-    return <p className="sa-status">Loading admin analytics workspace...</p>;
+    return (
+      <section className="sa-admin-dashboard" aria-busy="true">
+        <InlineLoadingNotice label="Loading admin analytics workspace..." />
+
+        <div className="sa-admin-dashboard__analytics">
+          <CardGridSkeleton
+            count={4}
+            className="sa-admin-dashboard__analytics-skeleton"
+            cardClassName="sa-admin-dashboard__analytics-skeleton-card"
+            ariaLabel="Loading analytics highlights"
+          />
+        </div>
+
+        <div className="sa-admin-dashboard__grid">
+          {Array.from({ length: 5 }, (_, index) => (
+            <article key={`admin-dashboard-skeleton-${index}`} className="sa-data-card">
+              <div className="sa-admin-dashboard__panel-skeleton">
+                <TableSkeleton
+                  rows={3}
+                  columns={2}
+                  ariaLabel="Loading dashboard panel"
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
   }
 
   if (error) {

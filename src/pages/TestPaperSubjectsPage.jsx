@@ -3,6 +3,7 @@ import { AlertTriangle, Search } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
+import { InlineLoadingNotice } from "../components/loading/LoadingPrimitives";
 import SubjectCard from "../components/SubjectCard";
 import { TEST_PAPER_MODULE } from "../constants/paperTypes";
 import { routeBuilders, ROUTES } from "../routes/routePaths";
@@ -95,7 +96,12 @@ const TestPaperSubjectsPage = () => {
             />
           </label>
 
-          {loading ? <Loader count={8} className="exam-vault-subject-grid" /> : null}
+          {loading ? (
+            <>
+              <InlineLoadingNotice label="Loading published subjects for your exam vault..." />
+              <Loader count={8} className="exam-vault-subject-grid" />
+            </>
+          ) : null}
 
           {!loading && error ? (
             <EmptyState

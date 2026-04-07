@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect } from "react";
+import { ButtonBusyLabel } from "../../components/loading/LoadingPrimitives";
 
 const SubmitConfirmationModal = ({
   open,
@@ -81,7 +82,11 @@ const SubmitConfirmationModal = ({
             onClick={onConfirm}
             disabled={submitting}
           >
-            {submitting ? "Submitting..." : "Submit Now"}
+            <ButtonBusyLabel
+              busy={submitting}
+              busyLabel="Submitting..."
+              idleLabel="Submit Now"
+            />
           </button>
         </footer>
       </section>

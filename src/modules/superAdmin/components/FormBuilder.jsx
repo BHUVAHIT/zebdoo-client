@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormik } from "formik";
 import * as Yup from "yup";
+import { ButtonBusyLabel } from "../../../components/loading/LoadingPrimitives";
 import StyledSelect from "./StyledSelect";
 
 const readFieldValue = (field, values) => {
@@ -317,7 +318,11 @@ const FormBuilder = ({
           className="sa-btn sa-btn--primary"
           disabled={submitting}
         >
-          {submitting ? "Saving..." : submitLabel || "Save"}
+          <ButtonBusyLabel
+            busy={submitting}
+            busyLabel="Saving..."
+            idleLabel={submitLabel || "Save"}
+          />
         </button>
       </div>
     </form>

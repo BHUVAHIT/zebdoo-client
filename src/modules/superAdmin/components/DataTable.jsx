@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Plus, RefreshCcw } from "lucide-react";
+import { Plus } from "lucide-react";
 import { PAGE_SIZE_OPTIONS } from "../types/entities";
 import { useDebouncedValue } from "../../../shared/hooks/useDebouncedValue";
+import {
+  InlineLoadingNotice,
+  TableSkeleton,
+} from "../../../components/loading/LoadingPrimitives";
 import AdminTable from "./AdminTable";
 import FiltersBar from "./FiltersBar";
 import ModernPagination from "./ModernPagination";
@@ -87,10 +91,10 @@ const DataTable = ({
         </div>
 
         {isFetching && !loading ? (
-          <p className="mb-3 mt-0 inline-flex items-center gap-2 text-sm text-slate-500">
-            <RefreshCcw size={14} className="animate-spin" />
-            Refreshing data...
-          </p>
+          <InlineLoadingNotice
+            className="mb-3"
+            label="Refreshing data to reflect your latest filters..."
+          />
         ) : null}
 
         {error ? (
@@ -109,15 +113,12 @@ const DataTable = ({
         ) : null}
 
         {loading ? (
-          <div className="grid gap-2">
-            {Array.from({ length: 7 }, (_, index) => index).map((row) => (
-              <span
-                key={row}
-                className="block h-12 animate-pulse rounded-xl bg-slate-100"
-                aria-hidden="true"
-              />
-            ))}
-          </div>
+          <TableSkeleton
+            rows={Math.min(Math.max(pageSize || 7, 5), 10)}
+            columns={Math.max(columns.length, 4)}
+            className="sa-table-skeleton"
+            ariaLabel="Loading table records"
+          />
         ) : null}
 
         {!loading && !error ? (

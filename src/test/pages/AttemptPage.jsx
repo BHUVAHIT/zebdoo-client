@@ -11,6 +11,7 @@ import SubmitConfirmationModal from "../components/SubmitConfirmationModal";
 import TestStepHeader from "../components/TestStepHeader";
 import { useAttemptTimer } from "../hooks/useAttemptTimer";
 import { useSubmitAttempt } from "../hooks/useSubmitAttempt";
+import { ButtonBusyLabel } from "../../components/loading/LoadingPrimitives";
 import {
   getChapterById,
   getDifficultyLevels,
@@ -425,6 +426,7 @@ const AttemptPage = () => {
             <button
               type="button"
               className="btn-secondary"
+              disabled={submitting}
               onClick={() =>
                 navigate(
                   `${routeBuilders.assessmentSession.preview(
@@ -446,7 +448,11 @@ const AttemptPage = () => {
               }}
               disabled={submitting}
             >
-              Submit
+              <ButtonBusyLabel
+                busy={submitting}
+                busyLabel="Submitting..."
+                idleLabel="Submit"
+              />
             </button>
           </div>
         }
@@ -533,6 +539,15 @@ const AttemptPage = () => {
         onPageSizeChange={setPageSize}
         onJumpToQuestion={handleQuestionJump}
       />
+
+      {submitting ? (
+        <div className="mcq-submit-overlay" role="status" aria-live="polite">
+          <div className="mcq-submit-overlay__content">
+            <span className="mcq-submit-overlay__spinner" aria-hidden="true" />
+            <p>Submitting your attempt and generating result analytics...</p>
+          </div>
+        </div>
+      ) : null}
 
       <SubmitConfirmationModal
         open={showSubmitConfirm}

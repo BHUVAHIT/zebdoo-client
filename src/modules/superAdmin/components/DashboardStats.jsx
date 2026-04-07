@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { CardGridSkeleton } from "../../../components/loading/LoadingPrimitives";
 
-const DashboardStats = ({ metrics, metricConfig }) => {
+const DashboardStats = ({ loading = false, metrics, metricConfig }) => {
   const [expanded, setExpanded] = useState(true);
 
   const normalizedMetrics = useMemo(() => metrics || {}, [metrics]);
@@ -30,19 +31,28 @@ const DashboardStats = ({ metrics, metricConfig }) => {
         id="sa-stats-grid"
         className={`sa-stats-grid ${expanded ? "is-open" : "is-collapsed"}`}
       >
-        {metricConfig.map(({ label, key, icon: Icon, color }) => {
-          const value = Number(normalizedMetrics[key] || 0);
+        {loading ? (
+          <CardGridSkeleton
+            count={metricConfig.length || 5}
+            className="sa-stats-skeleton-grid"
+            cardClassName="sa-stats-skeleton-card"
+            ariaLabel="Loading dashboard metrics"
+          />
+        ) : (
+          metricConfig.map(({ label, key, icon: Icon, color }) => {
+            const value = Number(normalizedMetrics[key] || 0);
 
-          return (
-            <article key={key} className={`sa-stats-card ${color}`}>
-              <div>
-                <p>{label}</p>
-                <strong>{value.toLocaleString()}</strong>
-              </div>
-              {Icon ? <Icon className="sa-stats-card__icon" aria-hidden="true" /> : null}
-            </article>
-          );
-        })}
+            return (
+              <article key={key} className={`sa-stats-card ${color}`}>
+                <div>
+                  <p>{label}</p>
+                  <strong>{value.toLocaleString()}</strong>
+                </div>
+                {Icon ? <Icon className="sa-stats-card__icon" aria-hidden="true" /> : null}
+              </article>
+            );
+          })
+        )}
       </div>
     </section>
   );

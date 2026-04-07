@@ -8,6 +8,7 @@ import {
 import { ROUTES } from "../routes/routePaths";
 import { testPaperService } from "../services/testPaperService";
 import { useAppToast } from "../components/notifications/useAppToast";
+import { InlineLoadingNotice } from "../components/loading/LoadingPrimitives";
 import { PageHeader } from "./components/AdminUiKit";
 import PaperForm from "./components/PaperForm";
 import "./testPaperAdmin.css";
@@ -237,6 +238,8 @@ const AddEditTestPaperForm = () => {
           backTo={ROUTES.admin.testPapers}
           backLabel="Back"
         />
+
+        <InlineLoadingNotice label="Loading paper metadata, subjects, and chapter options..." />
 
         <div className="grid gap-3 rounded-3xl border border-[#e5e7eb] bg-[#f8fafc] p-4 sm:p-6">
           {Array.from({ length: 6 }, (_, index) => (

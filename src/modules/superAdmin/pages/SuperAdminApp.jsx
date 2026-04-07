@@ -5,6 +5,7 @@ import SuperAdminLayout from "../components/SuperAdminLayout";
 import DashboardStats from "../components/DashboardStats";
 import { adminDashboardService } from "../../shared/services/adminDashboard.service";
 import { ROUTES } from "../../../routes/routePaths";
+import RouteLoadingScreen from "../../../components/RouteLoadingScreen";
 import "../superAdmin.css";
 
 const AdminDashboardPage = lazy(() => import("../../admin/dashboard/pages/AdminDashboardPage"));
@@ -30,6 +31,7 @@ const ManageTestPapersPage = lazy(() => import("../../../admin-pages/ManageTestP
 const AddEditTestPaperForm = lazy(() => import("../../../admin-pages/AddEditTestPaperForm"));
 
 const SuperAdminApp = () => {
+  const [metricsLoading, setMetricsLoading] = useState(true);
   const [metrics, setMetrics] = useState({
     students: 0,
     subjects: 0,
@@ -39,18 +41,31 @@ const SuperAdminApp = () => {
   });
 
   const refreshMetrics = useCallback(async () => {
-    const next = await adminDashboardService.getMetrics();
-    setMetrics(next);
+    setMetricsLoading(true);
+    try {
+      const next = await adminDashboardService.getMetrics();
+      setMetrics(next);
+    } finally {
+      setMetricsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     let active = true;
+    setMetricsLoading(true);
 
-    adminDashboardService.getMetrics().then((next) => {
-      if (active) {
-        setMetrics(next);
-      }
-    });
+    adminDashboardService
+      .getMetrics()
+      .then((next) => {
+        if (active) {
+          setMetrics(next);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setMetricsLoading(false);
+        }
+      });
 
     return () => {
       active = false;
@@ -67,9 +82,16 @@ const SuperAdminApp = () => {
 
   return (
     <SuperAdminLayout>
-      <DashboardStats metrics={metrics} metricConfig={metricConfig} />
+      <DashboardStats loading={metricsLoading} metrics={metrics} metricConfig={metricConfig} />
 
-      <Suspense fallback={<p className="text-center py-8 text-slate-500">Loading super admin workspace...</p>}>
+      <Suspense
+        fallback={
+          <RouteLoadingScreen
+            label="Loading super admin workspace..."
+            hint="Preparing dashboards, tables, and management tools."
+          />
+        }
+      >
         <Routes>
           <Route index element={<Navigate to={ROUTES.admin.dashboard} replace />} />
           <Route path="dashboard" element={<AdminDashboardPage />} />

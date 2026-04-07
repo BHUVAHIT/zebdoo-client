@@ -1,10 +1,12 @@
 import PropTypes from "prop-types";
+import { PageContentSkeleton } from "../../components/loading/LoadingPrimitives";
 
 const LoadingState = ({ label }) => (
-  <div className="mcq-loading-state" role="status" aria-live="polite">
-    <span className="mcq-loading-state__spinner" />
-    <p>{label}</p>
-  </div>
+  <PageContentSkeleton
+    className="mcq-loading-state"
+    title={label}
+    description="Building your next exam step. This usually takes a moment."
+  />
 );
 
 LoadingState.propTypes = {
@@ -12,7 +14,7 @@ LoadingState.propTypes = {
 };
 
 LoadingState.defaultProps = {
-  label: "Loading...",
+  label: "Preparing your assessment...",
 };
 
 export default LoadingState;

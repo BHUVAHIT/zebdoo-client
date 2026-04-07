@@ -1,6 +1,7 @@
 import { ExternalLink, PencilLine, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import PaginationBar from "../../components/PaginationBar";
+import { InlineLoadingNotice } from "../../components/loading/LoadingPrimitives";
 import { TEST_PAPER_SCOPES } from "../../constants/paperTypes";
 import { routeBuilders } from "../../routes/routePaths";
 
@@ -39,6 +40,7 @@ const PaperTable = ({
 
       {loading ? (
         <div className="grid gap-3 p-4 sm:p-6">
+          <InlineLoadingNotice label="Loading papers with current filters and page settings..." />
           {Array.from({ length: 8 }, (_, index) => (
             <span key={`paper-loader-${index}`} className="tp-admin-loading-bar h-11" />
           ))}

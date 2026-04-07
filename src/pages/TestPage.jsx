@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import "../test/testFlow.css";
 import { routeBuilders } from "../routes/routePaths";
+import LoadingState from "../test/components/LoadingState";
 
 const TestFlowLayout = lazy(() => import("../test/pages/TestFlowLayout"));
 const SubjectSelectionPage = lazy(() => import("../test/pages/SubjectSelectionPage"));
@@ -12,12 +13,7 @@ const DifficultySelectionPage = lazy(() =>
 const AttemptPage = lazy(() => import("../test/pages/AttemptPage"));
 const PreviewPage = lazy(() => import("../test/pages/PreviewPage"));
 
-const RouteFallback = () => (
-  <div className="mcq-loading-state" role="status" aria-live="polite">
-    <span className="mcq-loading-state__spinner" />
-    <p>Loading test flow...</p>
-  </div>
-);
+const RouteFallback = () => <LoadingState label="Loading test flow..." />;
 
 const SubjectAliasRedirect = () => {
   const { subjectId } = useParams();

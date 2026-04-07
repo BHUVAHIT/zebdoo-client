@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getSubjects } from "../../../../test/services/testService";
 import { routeBuilders, ROUTES } from "../../../../routes/routePaths";
@@ -15,6 +15,10 @@ import {
   computeLearningProfile,
   getLearningProfile,
 } from "../../../../services/learningAnalyticsService";
+import {
+  CardGridSkeleton,
+  InlineLoadingNotice,
+} from "../../../../components/loading/LoadingPrimitives";
 import { SMART_TEST_GOALS } from "../../../../test/config/smartTestEngine";
 import "../studentDashboard.css";
 
@@ -24,13 +28,55 @@ const toTitleCase = (value = "") => {
   return input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
 };
 
+const StudentDashboardBootSkeleton = () => (
+  <section className="student-dashboard-page" aria-busy="true" aria-live="polite">
+    <header className="student-dashboard-hero student-dashboard-hero--skeleton">
+      <span className="student-dashboard-skeleton student-dashboard-skeleton--line-sm" />
+      <span className="student-dashboard-skeleton student-dashboard-skeleton--line-lg" />
+      <span className="student-dashboard-skeleton student-dashboard-skeleton--line" />
+      <span className="student-dashboard-skeleton student-dashboard-skeleton--line" />
+    </header>
+
+    <CardGridSkeleton
+      count={6}
+      className="student-dashboard-metrics"
+      cardClassName="student-dashboard-skeleton-card"
+      ariaLabel="Loading dashboard metrics"
+    />
+
+    <CardGridSkeleton
+      count={3}
+      className="student-dashboard-quick-grid"
+      cardClassName="student-dashboard-skeleton-card student-dashboard-skeleton-card--tall"
+      ariaLabel="Loading quick insights"
+    />
+
+    <CardGridSkeleton
+      count={2}
+      className="student-dashboard-analytics-grid"
+      cardClassName="student-dashboard-skeleton-card student-dashboard-skeleton-card--chart"
+      ariaLabel="Loading analytics charts"
+    />
+
+    <CardGridSkeleton
+      count={4}
+      className="student-dashboard-grid"
+      cardClassName="student-dashboard-skeleton-card"
+      ariaLabel="Loading dashboard sections"
+    />
+  </section>
+);
+
 const StudentDashboardPage = () => {
   const catalogVersion = useCatalogStore((state) => state.version);
   const currentUser = useAuthStore((state) => state.user);
   const userScopeId = useMemo(() => resolveStorageScopeId(currentUser), [currentUser]);
+  const hasLoadedDashboardRef = useRef(false);
 
   const [subjects, setSubjects] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [refreshingDashboard, setRefreshingDashboard] = useState(false);
   const [subjectError, setSubjectError] = useState("");
 
   const [history, setHistory] = useState([]);
@@ -38,29 +84,41 @@ const StudentDashboardPage = () => {
 
   // STATIC NOW -> API LATER: async contracts read centralized static stores today.
   const loadDashboardData = useCallback(async () => {
+    if (hasLoadedDashboardRef.current) {
+      setRefreshingDashboard(true);
+    } else {
+      setLoadingDashboard(true);
+    }
+
     setLoadingSubjects(true);
     setSubjectError("");
 
     try {
-      const [subjectList] = await Promise.all([getSubjects()]);
-      setSubjects(subjectList);
-    } catch (error) {
-      setSubjectError(error.message || "Unable to load dashboard subjects.");
+      try {
+        const [subjectList] = await Promise.all([getSubjects()]);
+        setSubjects(subjectList);
+      } catch (error) {
+        setSubjectError(error.message || "Unable to load dashboard subjects.");
+      } finally {
+        setLoadingSubjects(false);
+      }
+
+      const rawHistory = loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+        scopeId: userScopeId,
+        migrateLegacy: false,
+      });
+      const normalizedHistory = Array.isArray(rawHistory) ? rawHistory : [];
+      const orderedHistory = [...normalizedHistory].sort(
+        (left, right) => new Date(right.submittedAt || 0) - new Date(left.submittedAt || 0)
+      );
+
+      setHistory(orderedHistory);
+      setLearningProfile(computeLearningProfile(orderedHistory));
     } finally {
-      setLoadingSubjects(false);
+      hasLoadedDashboardRef.current = true;
+      setLoadingDashboard(false);
+      setRefreshingDashboard(false);
     }
-
-    const rawHistory = loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
-      scopeId: userScopeId,
-      migrateLegacy: false,
-    });
-    const normalizedHistory = Array.isArray(rawHistory) ? rawHistory : [];
-    const orderedHistory = [...normalizedHistory].sort(
-      (left, right) => new Date(right.submittedAt || 0) - new Date(left.submittedAt || 0)
-    );
-
-    setHistory(orderedHistory);
-    setLearningProfile(computeLearningProfile(orderedHistory));
   }, [userScopeId]);
 
   useEffect(() => {
@@ -240,8 +298,16 @@ const StudentDashboardPage = () => {
     return Math.min(Math.round((current / next) * 100), 100);
   }, [learningProfile.xp?.currentLevelProgress, learningProfile.xp?.nextLevelXp]);
 
+  if (loadingDashboard) {
+    return <StudentDashboardBootSkeleton />;
+  }
+
   return (
     <section className="student-dashboard-page">
+      {refreshingDashboard ? (
+        <InlineLoadingNotice label="Refreshing dashboard insights with latest attempts..." />
+      ) : null}
+
       <header className="student-dashboard-hero">
         <div className="student-dashboard-hero__content">
           <p className="student-dashboard-hero__kicker">Your Learning Command Deck</p>

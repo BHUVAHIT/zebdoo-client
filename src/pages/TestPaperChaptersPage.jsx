@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import ChapterCard from "../components/ChapterCard";
 import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
+import { InlineLoadingNotice } from "../components/loading/LoadingPrimitives";
 import {
   TEST_PAPER_MODES,
   TEST_PAPER_MODULE,
@@ -170,7 +171,12 @@ const TestPaperChaptersPage = () => {
             />
           </label>
 
-          {loading ? <Loader count={6} className="exam-vault-chapter-grid" /> : null}
+          {loading ? (
+            <>
+              <InlineLoadingNotice label="Loading chapter mapping and paper availability..." />
+              <Loader count={6} className="exam-vault-chapter-grid" />
+            </>
+          ) : null}
 
           {!loading && error ? (
             <EmptyState

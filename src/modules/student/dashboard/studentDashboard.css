@@ -35,6 +35,11 @@
   align-items: start;
 }
 
+.student-dashboard-hero--skeleton {
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+}
+
 .student-dashboard-hero__content {
   display: grid;
   gap: 0.62rem;
@@ -437,6 +442,37 @@
   animation: student-dashboard-shimmer 1.4s linear infinite;
 }
 
+.student-dashboard-skeleton--line {
+  height: 14px;
+}
+
+.student-dashboard-skeleton--line-sm {
+  height: 12px;
+  width: 26%;
+}
+
+.student-dashboard-skeleton--line-lg {
+  height: 22px;
+  width: 68%;
+}
+
+.student-dashboard-skeleton-card {
+  min-height: 126px;
+  border-radius: 16px;
+  border: 1px solid var(--student-border);
+  background: linear-gradient(98deg, #e5edf8 0%, #f2f6fb 50%, #e5edf8 100%);
+  background-size: 220% 100%;
+  animation: student-dashboard-shimmer 1.4s linear infinite;
+}
+
+.student-dashboard-skeleton-card--tall {
+  min-height: 152px;
+}
+
+.student-dashboard-skeleton-card--chart {
+  min-height: 206px;
+}
+
 .student-dashboard-card a:focus-visible,
 .student-dashboard-hero__actions a:focus-visible {
   outline: 3px solid rgba(29, 78, 216, 0.34);
@@ -510,7 +546,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .student-dashboard-skeleton {
+  .student-dashboard-skeleton,
+  .student-dashboard-skeleton-card {
     animation: none;
   }
 }

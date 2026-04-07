@@ -13,6 +13,7 @@ import {
 } from "../utils/storageScope";
 import { routeBuilders } from "../routes/routePaths";
 import { SMART_TEST_GOALS } from "../test/config/smartTestEngine";
+import { CardGridSkeleton } from "../components/loading/LoadingPrimitives";
 
 const ResultCard = lazy(() => import("../components/ResultCard"));
 
@@ -224,7 +225,16 @@ const ResultPage = () => {
           </p>
         </header>
 
-        <Suspense fallback={<p className="result-loading">Loading results...</p>}>
+        <Suspense
+          fallback={
+            <CardGridSkeleton
+              count={3}
+              className="result-loading-grid"
+              cardClassName="result-loading-card"
+              ariaLabel="Loading question-wise analysis"
+            />
+          }
+        >
           {questionResults.map((question, index) => (
             <ResultCard key={question.id} question={question} index={index} />
           ))}

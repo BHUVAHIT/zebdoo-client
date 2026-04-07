@@ -5,6 +5,7 @@ import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
 import PaperList from "../components/PaperList";
 import PaperTabs from "../components/PaperTabs";
+import { InlineLoadingNotice } from "../components/loading/LoadingPrimitives";
 import {
   TEST_PAPER_MODES,
   TEST_PAPER_MODULE,
@@ -518,7 +519,12 @@ const TestPaperListPage = () => {
             onChange={setActiveType}
           />
 
-          {loading ? <Loader count={7} className="exam-vault-table-skeleton" /> : null}
+          {loading ? (
+            <>
+              <InlineLoadingNotice label="Loading papers for selected chapter, type, and year..." />
+              <Loader count={7} className="exam-vault-table-skeleton" />
+            </>
+          ) : null}
 
           {!loading && error ? (
             <EmptyState
