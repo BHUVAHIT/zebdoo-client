@@ -5,10 +5,14 @@ import {
   persist,
   subscribeWithSelector,
 } from "zustand/middleware";
+import { isKnownRole, normalizeRole as normalizeAppRole } from "../routes/routePaths";
 
 const STORE_NAME = "zebdoo:session-store:v1";
 
-const normalizeRole = (value) => String(value || "GUEST").trim().toUpperCase();
+const normalizeSessionRole = (value) => {
+  const normalized = normalizeAppRole(value);
+  return isKnownRole(normalized) ? normalized : "GUEST";
+};
 
 const createTabId = () => `tab-${Date.now()}-${Math.round(Math.random() * 1_000_000)}`;
 
@@ -28,7 +32,7 @@ export const useSessionStore = create(
           hydrateRole: (role) => {
             set(
               {
-                userRole: normalizeRole(role),
+                userRole: normalizeSessionRole(role),
               },
               false,
               "session/hydrateRole"
@@ -69,8 +73,18 @@ export const useSessionStore = create(
         {
           name: STORE_NAME,
           storage: createJSONStorage(() => window.localStorage),
+          merge: (persistedState, currentState) => {
+            const persisted = persistedState && typeof persistedState === "object" ? persistedState : {};
+
+            return {
+              ...currentState,
+              ...persisted,
+              tabId: createTabId(),
+              userRole: normalizeSessionRole(persisted.userRole),
+              activeRoute: String(persisted.activeRoute || currentState.activeRoute || "/"),
+            };
+          },
           partialize: (state) => ({
-            tabId: state.tabId,
             activeRoute: state.activeRoute,
             userRole: state.userRole,
             lastCatalogVersion: state.lastCatalogVersion,

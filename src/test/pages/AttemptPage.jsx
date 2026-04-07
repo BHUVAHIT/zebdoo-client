@@ -22,6 +22,11 @@ import {
   selectAttemptStats,
   useTestFlowStore,
 } from "../store/testFlowStore";
+import {
+  buildAttemptSnapshot,
+  buildAttemptTestId,
+  isValidAttempt,
+} from "../utils/attemptResume";
 import { routeBuilders } from "../../routes/routePaths";
 import {
   getAdaptiveDifficultyRecommendation,
@@ -112,7 +117,11 @@ const AttemptPage = () => {
   );
 
   const adaptiveDifficulty = useMemo(
-    () => getAdaptiveDifficultyRecommendation({ subjectId, chapterId }),
+    () =>
+      getAdaptiveDifficultyRecommendation({ subjectId, chapterId }) || {
+        difficultyId: "medium",
+        reason: "Starting with medium is ideal for baseline calibration.",
+      },
     [chapterId, subjectId]
   );
 
@@ -157,14 +166,28 @@ const AttemptPage = () => {
     }
 
     const snapshot = useTestFlowStore.getState();
+    const expectedAttemptTestId = buildAttemptTestId({
+      subjectId,
+      chapterId,
+      difficultyId: difficultyLevel,
+    });
+    const attemptSnapshot = buildAttemptSnapshot({
+      id: snapshot.attemptKey,
+      expectedId: routeAttemptKey,
+      testId: snapshot.attemptTestId,
+      status: snapshot.attemptStatus,
+      endsAt: snapshot.timer?.endsAt,
+      hasQuestions: Array.isArray(snapshot.questions) && snapshot.questions.length > 0,
+    });
     const hasReusableTime =
       effectiveProfile.autoSubmitOnTimeout
         ? Number(snapshot.timer.endsAt || 0) > Date.now()
         : true;
 
     const canReuseAttempt =
-      snapshot.attemptKey === routeAttemptKey &&
-      snapshot.questions.length > 0 &&
+      Boolean(expectedAttemptTestId) &&
+      snapshot.attemptTestId === expectedAttemptTestId &&
+      isValidAttempt(attemptSnapshot) &&
       hasReusableTime;
 
     if (canReuseAttempt) {
@@ -206,6 +229,10 @@ const AttemptPage = () => {
         smartGoal: effectiveSmartGoal,
         attemptMode: effectiveAttemptMode,
       });
+
+      if (!Array.isArray(payload?.questions) || payload.questions.length === 0) {
+        throw new Error("Question set unavailable for selected configuration.");
+      }
 
       setAttemptMode(payload.attemptMode || effectiveAttemptMode);
       setSmartGoal(payload.smartGoal || effectiveSmartGoal);

@@ -234,6 +234,17 @@ const initialState = {
   tabSwitchCount: 0,
 };
 
+const buildFlowResetState = (state, overrides = {}) => ({
+  ...clearAttemptArtifacts(state, ATTEMPT_STATUS.IDLE),
+  attemptTestId: "",
+  attemptMode: state.attemptMode || DEFAULT_ATTEMPT_MODE,
+  smartGoal:
+    state.smartGoal ||
+    getGoalFromLegacyMode(state.attemptMode || DEFAULT_ATTEMPT_MODE, DEFAULT_SMART_TEST_GOAL),
+  engineProfile: null,
+  ...overrides,
+});
+
 const getMaxPage = (totalQuestions, pageSize) => {
   if (!totalQuestions || !pageSize) return 1;
   return Math.max(Math.ceil(totalQuestions / pageSize), 1);
@@ -268,21 +279,41 @@ export const useTestFlowStore = create(
       ...initialState,
 
       setAttemptMode: (attemptMode) =>
-        set((state) => ({
-          attemptMode: attemptMode || state.attemptMode || DEFAULT_ATTEMPT_MODE,
-          smartGoal: getGoalFromLegacyMode(
-            attemptMode || state.attemptMode || DEFAULT_ATTEMPT_MODE,
+        set((state) => {
+          const nextAttemptMode = attemptMode || state.attemptMode || DEFAULT_ATTEMPT_MODE;
+          const nextSmartGoal = getGoalFromLegacyMode(
+            nextAttemptMode,
             state.smartGoal || DEFAULT_SMART_TEST_GOAL
-          ),
-        })),
+          );
+
+          if (
+            nextAttemptMode === state.attemptMode &&
+            nextSmartGoal === state.smartGoal
+          ) {
+            return state;
+          }
+
+          return buildFlowResetState(state, {
+            attemptMode: nextAttemptMode,
+            smartGoal: nextSmartGoal,
+          });
+        }),
 
       setSmartGoal: (smartGoal) =>
-        set((state) => ({
-          smartGoal: normalizeSmartGoal(
+        set((state) => {
+          const nextSmartGoal = normalizeSmartGoal(
             smartGoal,
             state.smartGoal || DEFAULT_SMART_TEST_GOAL
-          ),
-        })),
+          );
+
+          if (nextSmartGoal === state.smartGoal) {
+            return state;
+          }
+
+          return buildFlowResetState(state, {
+            smartGoal: nextSmartGoal,
+          });
+        }),
 
       setSubject: (subject) =>
         set((state) => {
@@ -290,30 +321,11 @@ export const useTestFlowStore = create(
             return state;
           }
 
-          return {
+          return buildFlowResetState(state, {
             subject,
             chapter: null,
             difficulty: null,
-            attemptStatus: ATTEMPT_STATUS.IDLE,
-            attemptTestId: "",
-            attemptMode: state.attemptMode || DEFAULT_ATTEMPT_MODE,
-            smartGoal:
-              state.smartGoal || getGoalFromLegacyMode(state.attemptMode, DEFAULT_SMART_TEST_GOAL),
-            engineProfile: null,
-            attemptKey: null,
-            questions: [],
-            answers: {},
-            visited: {},
-            markedForReview: {},
-            bookmarkedQuestions: {},
-            questionNotes: {},
-            questionTimeSpent: {},
-            currentPage: 1,
-            activeQuestionId: null,
-            activeQuestionStartedAt: null,
-            timer: getDefaultTimer(),
-            tabSwitchCount: 0,
-          };
+          });
         }),
 
       setChapter: (chapter) =>
@@ -322,29 +334,10 @@ export const useTestFlowStore = create(
             return state;
           }
 
-          return {
+          return buildFlowResetState(state, {
             chapter,
             difficulty: null,
-            attemptStatus: ATTEMPT_STATUS.IDLE,
-            attemptTestId: "",
-            attemptMode: state.attemptMode || DEFAULT_ATTEMPT_MODE,
-            smartGoal:
-              state.smartGoal || getGoalFromLegacyMode(state.attemptMode, DEFAULT_SMART_TEST_GOAL),
-            engineProfile: null,
-            attemptKey: null,
-            questions: [],
-            answers: {},
-            visited: {},
-            markedForReview: {},
-            bookmarkedQuestions: {},
-            questionNotes: {},
-            questionTimeSpent: {},
-            currentPage: 1,
-            activeQuestionId: null,
-            activeQuestionStartedAt: null,
-            timer: getDefaultTimer(),
-            tabSwitchCount: 0,
-          };
+          });
         }),
 
       setDifficulty: (difficulty) =>
@@ -353,28 +346,9 @@ export const useTestFlowStore = create(
             return state;
           }
 
-          return {
+          return buildFlowResetState(state, {
             difficulty,
-            attemptStatus: ATTEMPT_STATUS.IDLE,
-            attemptTestId: "",
-            attemptMode: state.attemptMode || DEFAULT_ATTEMPT_MODE,
-            smartGoal:
-              state.smartGoal || getGoalFromLegacyMode(state.attemptMode, DEFAULT_SMART_TEST_GOAL),
-            engineProfile: null,
-            attemptKey: null,
-            questions: [],
-            answers: {},
-            visited: {},
-            markedForReview: {},
-            bookmarkedQuestions: {},
-            questionNotes: {},
-            questionTimeSpent: {},
-            currentPage: 1,
-            activeQuestionId: null,
-            activeQuestionStartedAt: null,
-            timer: getDefaultTimer(),
-            tabSwitchCount: 0,
-          };
+          });
         }),
 
       initializeAttempt: ({

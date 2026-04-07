@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, Layers3, Search } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
 import PaperList from "../components/PaperList";
@@ -30,8 +30,12 @@ const readStoredBookmarkIds = () => {
   }
 };
 
+const normalizePaperTypeForUi = (paperType) =>
+  TEST_PAPER_TYPE_META[paperType] ? paperType : TEST_PAPER_TYPES.OTHER;
+
 const TestPaperListPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { subjectId, mode, chapterId } = useParams();
 
   const [loading, setLoading] = useState(true);
@@ -56,6 +60,32 @@ const TestPaperListPage = () => {
     return chapterId || "all";
   }, [chapterId, effectiveMode]);
 
+  const canonicalPath = useMemo(() => {
+    if (!subjectId) return routeBuilders.testPapers.root;
+
+    if (!effectiveMode) {
+      return routeBuilders.testPapers.subject(subjectId);
+    }
+
+    if (effectiveMode === TEST_PAPER_MODES.FULL_SYLLABUS) {
+      return routeBuilders.testPapers.mode(subjectId, TEST_PAPER_MODES.FULL_SYLLABUS);
+    }
+
+    const normalizedChapterId = String(chapterId || "all").trim() || "all";
+    return routeBuilders.testPapers.chapter(
+      subjectId,
+      TEST_PAPER_MODES.CHAPTER_WISE,
+      normalizedChapterId
+    );
+  }, [chapterId, effectiveMode, subjectId]);
+
+  useEffect(() => {
+    if (!canonicalPath) return;
+    if (location.pathname === canonicalPath) return;
+
+    navigate(canonicalPath, { replace: true });
+  }, [canonicalPath, location.pathname, navigate]);
+
   useEffect(() => {
     setActiveType(TEST_PAPER_TYPES.PYC);
     setSearchInput("");
@@ -74,6 +104,11 @@ const TestPaperListPage = () => {
   }, [searchInput]);
 
   const loadPapers = useCallback(async () => {
+    if (!subjectId) {
+      navigate(routeBuilders.testPapers.root, { replace: true });
+      return;
+    }
+
     if (!effectiveMode) {
       navigate(routeBuilders.testPapers.subject(subjectId), { replace: true });
       return;
@@ -94,15 +129,44 @@ const TestPaperListPage = () => {
         chapterId: effectiveChapterId,
       });
 
+      const requestedChapterId =
+        effectiveMode === TEST_PAPER_MODES.CHAPTER_WISE ? String(chapterId || "all") : null;
+      const hasRequestedChapter =
+        requestedChapterId &&
+        requestedChapterId !== "all" &&
+        response.chapters.some((chapter) => chapter.id === requestedChapterId);
+
+      if (
+        effectiveMode === TEST_PAPER_MODES.CHAPTER_WISE &&
+        requestedChapterId &&
+        requestedChapterId !== "all" &&
+        !hasRequestedChapter
+      ) {
+        navigate(
+          routeBuilders.testPapers.chapter(subjectId, TEST_PAPER_MODES.CHAPTER_WISE, "all"),
+          {
+            replace: true,
+          }
+        );
+        return;
+      }
+
       setSubject(response.subject);
       setPapers(response.papers);
       setChapters(response.chapters);
     } catch (loadError) {
-      setError(loadError.message || "Unable to load papers.");
+      const errorMessage = loadError?.message || "Unable to load papers.";
+
+      if (/subject/i.test(errorMessage) && /not available/i.test(errorMessage)) {
+        navigate(routeBuilders.testPapers.root, { replace: true });
+        return;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [effectiveChapterId, effectiveMode, navigate, subjectId]);
+  }, [chapterId, effectiveChapterId, effectiveMode, navigate, subjectId]);
 
   useEffect(() => {
     loadPapers();
@@ -140,7 +204,7 @@ const TestPaperListPage = () => {
   const countByType = useMemo(() => {
     return papers.reduce(
       (acc, paper) => {
-        const normalizedType = TEST_PAPER_TYPE_META[paper.type] ? paper.type : TEST_PAPER_TYPES.OTHER;
+        const normalizedType = normalizePaperTypeForUi(paper.type);
         acc[normalizedType] += 1;
         return acc;
       },
@@ -153,11 +217,33 @@ const TestPaperListPage = () => {
     );
   }, [papers]);
 
+  useEffect(() => {
+    if (!papers.length) {
+      if (activeType !== TEST_PAPER_TYPES.PYC) {
+        setActiveType(TEST_PAPER_TYPES.PYC);
+      }
+      return;
+    }
+
+    const hasCurrentType = papers.some(
+      (paper) => normalizePaperTypeForUi(paper.type) === activeType
+    );
+
+    if (hasCurrentType) {
+      return;
+    }
+
+    const firstAvailableType = TEST_PAPER_TYPE_OPTIONS.find(
+      (option) => countByType[option.value] > 0
+    )?.value;
+
+    setActiveType(firstAvailableType || TEST_PAPER_TYPES.PYC);
+  }, [activeType, countByType, papers]);
+
   const availablePycYears = useMemo(() => {
-    const activeTypePapers = papers.filter((paper) => {
-      const normalizedType = TEST_PAPER_TYPE_META[paper.type] ? paper.type : TEST_PAPER_TYPES.OTHER;
-      return normalizedType === activeType;
-    });
+    const activeTypePapers = papers.filter(
+      (paper) => normalizePaperTypeForUi(paper.type) === activeType
+    );
 
     const source = activeTypePapers.length > 0 ? activeTypePapers : papers;
 
@@ -178,7 +264,7 @@ const TestPaperListPage = () => {
     const query = debouncedSearchTerm.toLowerCase();
 
     return papers
-      .filter((paper) => paper.type === activeType)
+      .filter((paper) => normalizePaperTypeForUi(paper.type) === activeType)
       .filter((paper) => {
         if (yearFilter === "all") return true;
         return String(paper.year) === yearFilter;
@@ -239,6 +325,28 @@ const TestPaperListPage = () => {
     return "Back to subject";
   }, [effectiveMode, isChapterSpecificView]);
 
+  const modeOptions = useMemo(
+    () => [
+      { value: TEST_PAPER_MODES.CHAPTER_WISE, label: "Chapter Wise" },
+      { value: TEST_PAPER_MODES.FULL_SYLLABUS, label: "Full Syllabus" },
+    ],
+    []
+  );
+
+  const handleModeSwitch = useCallback(
+    (nextMode) => {
+      if (!subjectId || nextMode === effectiveMode) return;
+
+      if (nextMode === TEST_PAPER_MODES.FULL_SYLLABUS) {
+        navigate(routeBuilders.testPapers.mode(subjectId, TEST_PAPER_MODES.FULL_SYLLABUS));
+        return;
+      }
+
+      navigate(routeBuilders.testPapers.chapter(subjectId, TEST_PAPER_MODES.CHAPTER_WISE, "all"));
+    },
+    [effectiveMode, navigate, subjectId]
+  );
+
   const activeFilterChips = useMemo(() => {
     const chips = [];
     if (debouncedSearchTerm) chips.push(`Search: ${debouncedSearchTerm}`);
@@ -298,9 +406,32 @@ const TestPaperListPage = () => {
         <section className="exam-vault-subjects-shell">
           {isChapterSpecificView ? (
             <p className="exam-vault-context-note">
-              Chapter-focused view: mode switching is available at subject level.
+              Chapter-focused view: mode switching is locked to preserve chapter context.
             </p>
-          ) : null}
+          ) : (
+            <div
+              className="exam-vault-mode-toggle exam-vault-mode-toggle--list"
+              role="tablist"
+              aria-label="Paper mode"
+            >
+              {modeOptions.map((option) => {
+                const isActive = option.value === effectiveMode;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`exam-vault-mode-toggle__btn ${isActive ? "is-active" : ""}`}
+                    onClick={() => handleModeSwitch(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="exam-vault-list-toolbar">
             <div className="exam-vault-list-toolbar__meta">
@@ -343,6 +474,7 @@ const TestPaperListPage = () => {
                   <select
                     id="paper-year-filter"
                     value={yearFilter}
+                    disabled={availablePycYears.length === 0}
                     onChange={(event) => setYearFilter(event.target.value)}
                   >
                     <option value="all">All years</option>

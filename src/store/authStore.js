@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { normalizeRole as normalizeAppRole } from '../routes/routePaths';
+import { isKnownRole, normalizeRole as normalizeAppRole } from '../routes/routePaths';
 
 const ACCESS_TOKEN_KEY = 'token';
 const REFRESH_TOKEN_KEY = 'refreshToken';
@@ -12,9 +12,14 @@ const normalizeUserRole = (user) => {
     return user ?? null;
   }
 
+  const normalizedRole = normalizeAppRole(user.role);
+  if (!isKnownRole(normalizedRole)) {
+    return null;
+  }
+
   return {
     ...user,
-    role: normalizeAppRole(user.role),
+    role: normalizedRole,
   };
 };
 
@@ -51,6 +56,9 @@ export const useAuthStore = create((set, get) => ({
     const sessionExpiresAt =
       Number(expiresAt) || Date.now() + DEFAULT_SESSION_TTL_MS;
     const normalizedUser = normalizeUserRole(user);
+    if (!normalizedUser) {
+      throw new Error('Unable to start session for an unknown role.');
+    }
 
     localStorage.setItem(ACCESS_TOKEN_KEY, token);
     if (refreshToken) {

@@ -3,6 +3,8 @@ export const ROLES = Object.freeze({
   SUPER_ADMIN: "SUPER_ADMIN",
 });
 
+export const KNOWN_ROLES = Object.freeze([ROLES.STUDENT, ROLES.SUPER_ADMIN]);
+
 const LEGACY_ROLE_ALIASES = Object.freeze({
   USER: ROLES.STUDENT,
   STUDENT: ROLES.STUDENT,
@@ -78,14 +80,24 @@ export const normalizeRole = (role) => {
   return LEGACY_ROLE_ALIASES[normalized] || normalized;
 };
 
+export const isKnownRole = (role) => KNOWN_ROLES.includes(normalizeRole(role));
+
 export const isSuperAdminRole = (role) => normalizeRole(role) === ROLES.SUPER_ADMIN;
 
 export const isStudentRole = (role) => STUDENT_ROLES.includes(normalizeRole(role));
 
-export const getDefaultAppRoute = (role) =>
-  isSuperAdminRole(role) ? ROUTES.admin.root : ROUTES.student.dashboard;
+export const getDefaultAppRoute = (role) => {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === ROLES.SUPER_ADMIN) return ROUTES.admin.root;
+  if (normalizedRole === ROLES.STUDENT) return ROUTES.student.dashboard;
+  return ROUTES.auth.login;
+};
 
-export const getRoleHomeRoute = (role) =>
-  isSuperAdminRole(role) ? ROUTES.admin.dashboard : ROUTES.student.dashboard;
+export const getRoleHomeRoute = (role) => {
+  const normalizedRole = normalizeRole(role);
+  if (normalizedRole === ROLES.SUPER_ADMIN) return ROUTES.admin.dashboard;
+  if (normalizedRole === ROLES.STUDENT) return ROUTES.student.dashboard;
+  return ROUTES.auth.login;
+};
 
 export const PUBLIC_ROUTES = [ROUTES.home, ROUTES.auth.login, ROUTES.auth.register];

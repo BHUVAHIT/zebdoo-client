@@ -2,6 +2,7 @@ import {
   selectChaptersBySubjectId,
   selectSubjects,
 } from "../store/catalogSelectors";
+import { catalogStore } from "../store/catalogStore";
 import { loadFromStorage, saveToStorage } from "../utils/helpers";
 import { testPapersSeedData } from "../mock/testPapersData";
 import {
@@ -33,6 +34,8 @@ const withNetwork = async (resolver) => {
   await delay(randomLatency());
   return JSON.parse(JSON.stringify(resolver()));
 };
+
+const clone = (value) => JSON.parse(JSON.stringify(value));
 
 const normalizeText = (value) => String(value || "").trim();
 
@@ -67,6 +70,63 @@ const normalizeYear = (value) => {
   const year = Number(value);
   if (!Number.isFinite(year)) return NaN;
   return Math.trunc(year);
+};
+
+const normalizePersistedPaper = (paper = {}) => {
+  const id = normalizeText(paper.id);
+  if (!id) {
+    return null;
+  }
+
+  const normalizedType = normalizePaperTypeValue(paper);
+  const normalizedScope = normalizeScope(paper.scope || paper.mode);
+  const normalizedYear = normalizeYear(paper.year);
+
+  return {
+    ...paper,
+    id,
+    subjectId: normalizeText(paper.subjectId),
+    chapterId:
+      normalizedScope === TEST_PAPER_SCOPES.CHAPTER_WISE
+        ? normalizeText(paper.chapterId)
+        : null,
+    scope: normalizedScope,
+    type: normalizedType,
+    paperType: normalizedType,
+    year: Number.isFinite(normalizedYear) ? normalizedYear : new Date().getFullYear(),
+    title: normalizeText(paper.title),
+    pdfUrl: normalizeUrl(paper.pdfUrl),
+    pdfFileName: normalizeText(paper.pdfFileName) || null,
+    pdfFileSize: Number.isFinite(Number(paper.pdfFileSize))
+      ? Math.max(Math.trunc(Number(paper.pdfFileSize)), 0)
+      : 0,
+    pdfMimeType: normalizeText(paper.pdfMimeType) || "application/pdf",
+    createdAt: normalizeText(paper.createdAt) || new Date().toISOString(),
+    updatedAt: normalizeText(paper.updatedAt) || normalizeText(paper.createdAt) || new Date().toISOString(),
+  };
+};
+
+const dedupeByPaperId = (papers = []) => {
+  const byId = new Map();
+
+  papers.forEach((paper) => {
+    if (!paper?.id) return;
+
+    const previous = byId.get(paper.id);
+    if (!previous) {
+      byId.set(paper.id, paper);
+      return;
+    }
+
+    const previousUpdatedAt = Number(new Date(previous.updatedAt || previous.createdAt || 0));
+    const nextUpdatedAt = Number(new Date(paper.updatedAt || paper.createdAt || 0));
+
+    if (nextUpdatedAt >= previousUpdatedAt) {
+      byId.set(paper.id, paper);
+    }
+  });
+
+  return Array.from(byId.values());
 };
 
 const getYearRange = () => {
@@ -113,26 +173,96 @@ const getChapterMapBySubject = (subjectId) => {
 
 const buildDraftId = () => `tp-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
+const hasArrayChanged = (left = [], right = []) => {
+  if (left.length !== right.length) {
+    return true;
+  }
+
+  return JSON.stringify(left) !== JSON.stringify(right);
+};
+
+const reconcilePapersWithCatalog = (papers = []) => {
+  const subjectMap = getSubjectMap();
+  const chapterMapBySubject = Object.keys(subjectMap).reduce((acc, subjectId) => {
+    acc[subjectId] = getChapterMapBySubject(subjectId);
+    return acc;
+  }, {});
+
+  return papers
+    .filter((paper) => Boolean(subjectMap[paper.subjectId]))
+    .filter((paper) => {
+      if (paper.scope !== TEST_PAPER_SCOPES.CHAPTER_WISE) {
+        return true;
+      }
+
+      if (!paper.chapterId) {
+        return false;
+      }
+
+      return Boolean(chapterMapBySubject[paper.subjectId]?.[paper.chapterId]);
+    })
+    .map((paper) => {
+      if (paper.scope === TEST_PAPER_SCOPES.FULL_SYLLABUS && paper.chapterId) {
+        return {
+          ...paper,
+          chapterId: null,
+        };
+      }
+
+      return paper;
+    });
+};
+
+const sanitizePaperDb = (rawItems = []) => {
+  const normalized = (Array.isArray(rawItems) ? rawItems : [])
+    .map(normalizePersistedPaper)
+    .filter(Boolean);
+
+  const deduped = dedupeByPaperId(normalized);
+  return reconcilePapersWithCatalog(deduped);
+};
+
 const ensureSeed = () => {
   const stored = loadFromStorage(STORAGE_KEY, null);
+
   if (Array.isArray(stored)) {
-    return;
+    const sanitized = sanitizePaperDb(stored);
+    if (hasArrayChanged(stored, sanitized)) {
+      writeDb(sanitized, { notify: false });
+    }
+    return sanitized;
   }
-  saveToStorage(STORAGE_KEY, testPapersSeedData);
+
+  const seeded = sanitizePaperDb(clone(testPapersSeedData));
+  writeDb(seeded, { notify: false });
+  return seeded;
 };
 
 const readDb = () => {
-  ensureSeed();
+  const seeded = ensureSeed();
+  if (Array.isArray(seeded)) {
+    return seeded;
+  }
+
   const data = loadFromStorage(STORAGE_KEY, []);
-  return Array.isArray(data) ? data : [];
+  const sanitized = sanitizePaperDb(data);
+
+  if (hasArrayChanged(Array.isArray(data) ? data : [], sanitized)) {
+    writeDb(sanitized, { notify: false });
+  }
+
+  return sanitized;
 };
 
-const writeDb = (items) => {
+const writeDb = (items, { notify = true } = {}) => {
   saveToStorage(STORAGE_KEY, items);
-  saveToStorage(STORAGE_SYNC_KEY, { timestamp: Date.now() });
 
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME));
+  if (notify) {
+    saveToStorage(STORAGE_SYNC_KEY, { timestamp: Date.now() });
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(CHANGE_EVENT_NAME));
+    }
   }
 };
 
@@ -245,6 +375,19 @@ const validateAndNormalizePayload = (payload, { allowPartial = false } = {}) => 
 };
 
 export const testPaperService = {
+  getAll: async (filters = {}) => {
+    const response = await testPaperService.listPapersForAdmin(filters);
+    return response.items || [];
+  },
+
+  getById: async (paperId) => testPaperService.getPaperByIdForAdmin(paperId),
+
+  create: async (payload) => testPaperService.createPaper(payload),
+
+  update: async (paperId, payload) => testPaperService.updatePaper(paperId, payload),
+
+  delete: async (paperId) => testPaperService.deletePaper(paperId),
+
   getModeOptions: async () => withNetwork(() => TEST_PAPER_SCOPE_OPTIONS),
 
   getTypeOptions: async () => withNetwork(() => TEST_PAPER_TYPE_OPTIONS),
@@ -574,12 +717,21 @@ export const testPaperService = {
       }
     };
 
+    const unsubscribeCatalog = catalogStore.subscribe((state, previousState) => {
+      if (state.version === previousState.version) {
+        return;
+      }
+
+      callback();
+    });
+
     window.addEventListener(CHANGE_EVENT_NAME, handleCustomEvent);
     window.addEventListener("storage", handleStorageEvent);
 
     return () => {
       window.removeEventListener(CHANGE_EVENT_NAME, handleCustomEvent);
       window.removeEventListener("storage", handleStorageEvent);
+      unsubscribeCatalog?.();
     };
   },
 };

@@ -48,6 +48,16 @@ const AddEditTestPaperForm = () => {
     [form.subjectId, options.chaptersBySubject]
   );
 
+  const validSubjectIdSet = useMemo(
+    () => new Set((options.subjects || []).map((item) => String(item.value))),
+    [options.subjects]
+  );
+
+  const validChapterIdSet = useMemo(
+    () => new Set((chapterOptions || []).map((item) => String(item.value))),
+    [chapterOptions]
+  );
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -96,6 +106,39 @@ const AddEditTestPaperForm = () => {
       }));
     }
   }, [form.chapterId, form.scope]);
+
+  useEffect(() => {
+    if (!form.subjectId) return;
+
+    if (validSubjectIdSet.has(String(form.subjectId))) {
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      subjectId: "",
+      chapterId: "",
+    }));
+  }, [form.subjectId, validSubjectIdSet]);
+
+  useEffect(() => {
+    if (form.scope !== TEST_PAPER_SCOPES.CHAPTER_WISE) {
+      return;
+    }
+
+    if (!form.chapterId) {
+      return;
+    }
+
+    if (validChapterIdSet.has(String(form.chapterId))) {
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      chapterId: "",
+    }));
+  }, [form.chapterId, form.scope, validChapterIdSet]);
 
   useEffect(() => {
     if (form.paperType !== TEST_PAPER_TYPES.PYC && !form.year) {

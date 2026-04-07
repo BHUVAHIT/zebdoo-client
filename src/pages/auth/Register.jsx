@@ -3,27 +3,35 @@ import { useAuthStore } from '../../store/authStore';
 import { registerUser } from '../../api/auth';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
+import {
+  BookOpen,
+  CircleCheckBig,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
 import { getDefaultAppRoute, ROUTES } from '../../routes/routePaths';
 import { useAppToast } from '../../components/notifications/useAppToast';
+import './register.css';
 
 const Register = () => {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
   const { pushToast } = useAppToast();
 
-  // Yup validation schema
   const validationSchema = Yup.object().shape({
-    name: Yup.string().required('Name is required'),
-    srno: Yup.string().required('ICAI SR No is required'),
-    email: Yup.string().email('Invalid email').required('Email is required'),
-    level: Yup.string().oneOf(['Foundation', 'Inter', 'Final'], 'Select a valid level').required('Level is required'),
+    name: Yup.string().required('Please enter your full name.'),
+    srno: Yup.string().required('Please enter your ICAI SR No.'),
+    email: Yup.string().email('Please enter a valid email address.').required('Please enter your email address.'),
+    level: Yup.string()
+      .oneOf(['Foundation', 'Inter', 'Final'], 'Please choose your CA level.')
+      .required('Please choose your CA level.'),
     password: Yup.string()
-      .min(8, 'Password must be at least 8 characters')
-      .matches(/[a-z]/, 'Password must include a lowercase letter')
-      .matches(/[A-Z]/, 'Password must include an uppercase letter')
-      .matches(/[0-9]/, 'Password must include a number')
-      .matches(/[!@#$%^&*]/, 'Password must include a symbol: ! @ # $ % ^ & *')
-      .required('Password is required'),
+      .min(8, 'Use at least 8 characters in your password.')
+      .matches(/[a-z]/, 'Add at least one lowercase letter.')
+      .matches(/[A-Z]/, 'Add at least one uppercase letter.')
+      .matches(/[0-9]/, 'Add at least one number.')
+      .matches(/[!@#$%^&*]/, 'Add at least one symbol: ! @ # $ % ^ & *')
+      .required('Please create a password.'),
   });
 
   const handleSubmit = async (values, { setSubmitting, setErrors }) => {
@@ -49,117 +57,186 @@ const Register = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-green-400 to-blue-500 p-4">
-      <div className="bg-white shadow-2xl rounded-2xl p-8 sm:p-12 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
-          CA Student Registration
-        </h1>
+    <div className="register-page">
+      <div className="register-page__shape register-page__shape--top" aria-hidden="true" />
+      <div className="register-page__shape register-page__shape--bottom" aria-hidden="true" />
 
-        <Formik
-          initialValues={{
-            name: '',
-            srno: '',
-            email: '',
-            level: '',
-            password: '',
-          }}
-          validationSchema={validationSchema}
-          onSubmit={handleSubmit}
-        >
-          {({ isSubmitting, errors }) => (
-            <Form className="space-y-4">
-              {errors.general && (
-                <div className="text-red-500 text-sm text-center">
-                  {errors.general}
-                </div>
-              )}
+      <main className="register-shell" aria-labelledby="register-title">
+        <section className="register-brand-panel" aria-label="Reasons to create a Zebdoo account">
+          <span className="register-brand-panel__tag">Zebdoo Student Onboarding</span>
+          <h1 id="register-title">Build your CA prep workspace in minutes.</h1>
+          <p>
+            Create your account to unlock structured test practice, chapter-wise learning plans,
+            and performance insights built for ICAI students.
+          </p>
 
-              {/* Name */}
-              <div>
-                <label className="block text-gray-700 mb-1">Full Name</label>
-                <Field
-                  type="text"
-                  name="name"
-                  placeholder="Enter your name"
-                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <ErrorMessage name="name" component="div" className="text-red-500 text-sm mt-1" />
-              </div>
+          <ul className="register-benefits" aria-label="Registration benefits">
+            <li>
+              <span className="register-benefits__icon" aria-hidden="true">
+                <BookOpen size={16} />
+              </span>
+              Access focused study paths for Foundation, Inter, and Final.
+            </li>
+            <li>
+              <span className="register-benefits__icon" aria-hidden="true">
+                <Sparkles size={16} />
+              </span>
+              Track progress and confidence with smart test analytics.
+            </li>
+            <li>
+              <span className="register-benefits__icon" aria-hidden="true">
+                <ShieldCheck size={16} />
+              </span>
+              Keep your profile and practice history secure.
+            </li>
+          </ul>
 
-              {/* SR No */}
-              <div>
-                <label className="block text-gray-700 mb-1">ICAI SR No</label>
-                <Field
-                  type="text"
-                  name="srno"
-                  placeholder="Enter SR No"
-                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <ErrorMessage name="srno" component="div" className="text-red-500 text-sm mt-1" />
-              </div>
+          <div className="register-trust-note" aria-label="Trust assurance">
+            <CircleCheckBig size={16} aria-hidden="true" />
+            <span>Your account is created instantly and you are signed in right away.</span>
+          </div>
+        </section>
 
-              {/* Email */}
-              <div>
-                <label className="block text-gray-700 mb-1">Email</label>
-                <Field
-                  type="email"
-                  name="email"
-                  placeholder="Enter your email"
-                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <ErrorMessage name="email" component="div" className="text-red-500 text-sm mt-1" />
-              </div>
+        <section className="register-form-panel" aria-label="Student registration form">
+          <header className="register-form-header">
+            <h2>Create your account</h2>
+            <p>All fields are required so we can personalize your learning experience.</p>
+          </header>
 
-              {/* Level of Study */}
-              <div>
-                <label className="block text-gray-700 mb-1">Level of Study</label>
-                <Field
-                  as="select"
-                  name="level"
-                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-                >
-                  <option value="">Select Level</option>
-                  <option value="Foundation">Foundation</option>
-                  <option value="Inter">Inter</option>
-                  <option value="Final">Final</option>
-                </Field>
-                <ErrorMessage name="level" component="div" className="text-red-500 text-sm mt-1" />
-              </div>
-
-              {/* Password */}
-              <div>
-                <label className="block text-gray-700 mb-1">Password</label>
-                <Field
-                  type="password"
-                  name="password"
-                  placeholder="Enter your password"
-                  className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <ErrorMessage name="password" component="div" className="text-red-500 text-sm mt-1" />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-gradient-to-r from-green-500 to-blue-600 text-white font-semibold py-3 rounded-lg hover:from-green-600 hover:to-blue-700 transition duration-300"
-              >
-                {isSubmitting ? 'Registering...' : 'Register'}
-              </button>
-            </Form>
-          )}
-        </Formik>
-
-        <p className="text-center text-gray-500 mt-4 text-sm">
-          Already have an account?{' '}
-          <span
-            onClick={() => navigate(ROUTES.auth.login)}
-            className="text-green-500 cursor-pointer hover:underline"
+          <Formik
+            initialValues={{
+              name: '',
+              srno: '',
+              email: '',
+              level: '',
+              password: '',
+            }}
+            validationSchema={validationSchema}
+            onSubmit={handleSubmit}
           >
-            Login
-          </span>
-        </p>
-      </div>
+            {({ isSubmitting, errors, touched }) => (
+              <Form className="register-form" noValidate>
+                {errors.general && (
+                  <div className="register-alert" role="alert" aria-live="polite">
+                    {errors.general}
+                  </div>
+                )}
+
+                <div className="register-grid" role="group" aria-label="Student information">
+                  <div className="register-field-group">
+                    <label className="register-label" htmlFor="name">
+                      Full Name <span aria-hidden="true">*</span>
+                    </label>
+                    <Field
+                      id="name"
+                      type="text"
+                      name="name"
+                      autoComplete="name"
+                      placeholder="e.g. Aarav Sharma"
+                      className={`register-field ${touched.name && errors.name ? 'is-invalid' : ''}`}
+                      aria-invalid={Boolean(touched.name && errors.name)}
+                    />
+                    <ErrorMessage name="name" component="div" className="register-field-error" />
+                  </div>
+
+                  <div className="register-field-group">
+                    <label className="register-label" htmlFor="srno">
+                      ICAI SR No <span aria-hidden="true">*</span>
+                    </label>
+                    <Field
+                      id="srno"
+                      type="text"
+                      name="srno"
+                      autoComplete="off"
+                      placeholder="e.g. SRO1234567"
+                      className={`register-field ${touched.srno && errors.srno ? 'is-invalid' : ''}`}
+                      aria-invalid={Boolean(touched.srno && errors.srno)}
+                      aria-describedby="srno-help"
+                    />
+                    <p id="srno-help" className="register-helper-text">
+                      Your ICAI SR No helps us align your test journey.
+                    </p>
+                    <ErrorMessage name="srno" component="div" className="register-field-error" />
+                  </div>
+
+                  <div className="register-field-group">
+                    <label className="register-label" htmlFor="email">
+                      Email Address <span aria-hidden="true">*</span>
+                    </label>
+                    <Field
+                      id="email"
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      placeholder="you@example.com"
+                      className={`register-field ${touched.email && errors.email ? 'is-invalid' : ''}`}
+                      aria-invalid={Boolean(touched.email && errors.email)}
+                    />
+                    <ErrorMessage name="email" component="div" className="register-field-error" />
+                  </div>
+
+                  <div className="register-field-group">
+                    <label className="register-label" htmlFor="level">
+                      CA Level <span aria-hidden="true">*</span>
+                    </label>
+                    <Field
+                      id="level"
+                      as="select"
+                      name="level"
+                      className={`register-field ${touched.level && errors.level ? 'is-invalid' : ''}`}
+                      aria-invalid={Boolean(touched.level && errors.level)}
+                    >
+                      <option value="">Select your level</option>
+                      <option value="Foundation">Foundation</option>
+                      <option value="Inter">Inter</option>
+                      <option value="Final">Final</option>
+                    </Field>
+                    <ErrorMessage name="level" component="div" className="register-field-error" />
+                  </div>
+
+                  <div className="register-field-group register-field-group--full">
+                    <label className="register-label" htmlFor="password">
+                      Create Password <span aria-hidden="true">*</span>
+                    </label>
+                    <Field
+                      id="password"
+                      type="password"
+                      name="password"
+                      autoComplete="new-password"
+                      placeholder="Use 8+ characters with upper, lower, number, and symbol"
+                      className={`register-field ${touched.password && errors.password ? 'is-invalid' : ''}`}
+                      aria-invalid={Boolean(touched.password && errors.password)}
+                    />
+                    <p className="register-helper-text">
+                      Tip: Use something memorable but hard to guess.
+                    </p>
+                    <ErrorMessage name="password" component="div" className="register-field-error" />
+                  </div>
+                </div>
+
+                <button type="submit" disabled={isSubmitting} className="register-submit-btn">
+                  {isSubmitting ? 'Creating your account...' : 'Create account'}
+                </button>
+
+                <p className="register-submit-note" aria-live="polite">
+                  {isSubmitting ? 'Please wait while we securely register your profile.' : 'You will be logged in immediately after successful registration.'}
+                </p>
+              </Form>
+            )}
+          </Formik>
+
+          <p className="register-login-copy">
+            Already have an account?{' '}
+            <button
+              type="button"
+              onClick={() => navigate(ROUTES.auth.login)}
+              className="register-login-btn"
+            >
+              Sign in here
+            </button>
+          </p>
+        </section>
+      </main>
     </div>
   );
 };

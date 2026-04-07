@@ -23,6 +23,11 @@ const TestPaperChaptersPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadContext = useCallback(async () => {
+    if (!subjectId) {
+      navigate(routeBuilders.testPapers.root, { replace: true });
+      return;
+    }
+
     setLoading(true);
     setError("");
 
@@ -31,11 +36,18 @@ const TestPaperChaptersPage = () => {
       setSubject(response.subject);
       setChapters(response.chapters);
     } catch (loadError) {
-      setError(loadError.message || "Unable to load chapters.");
+      const errorMessage = loadError?.message || "Unable to load chapters.";
+
+      if (/subject/i.test(errorMessage) && /not available/i.test(errorMessage)) {
+        navigate(routeBuilders.testPapers.root, { replace: true });
+        return;
+      }
+
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  }, [subjectId]);
+  }, [navigate, subjectId]);
 
   useEffect(() => {
     loadContext();

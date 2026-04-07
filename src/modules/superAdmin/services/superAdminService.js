@@ -116,7 +116,49 @@ const SYSTEM_USERS = Object.freeze([
   },
 ]);
 
+const STUDENT_LEVELS = Object.freeze({
+  FOUNDATION: "Foundation",
+  INTER: "Inter",
+  FINAL: "Final",
+});
+
 const nextId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+const normalizeStudentLevel = (value) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  return STUDENT_LEVELS[normalized] || "";
+};
+
+const normalizeStudentName = (value) => String(value || "").trim();
+const normalizeStudentSrNo = (value) => String(value || "").trim();
+
+const ensureStudentIdentityPayload = ({ name, srNo, level }) => {
+  const normalizedName = normalizeStudentName(name);
+  if (normalizedName.length < 2) {
+    throw new ApiError("Student name is required.", 400, "NAME_REQUIRED");
+  }
+
+  const normalizedSrNo = normalizeStudentSrNo(srNo);
+  if (!normalizedSrNo) {
+    throw new ApiError("ICAI SR No is required.", 400, "SRNO_REQUIRED");
+  }
+
+  const normalizedLevel = normalizeStudentLevel(level);
+  if (!normalizedLevel) {
+    throw new ApiError("Level must be Foundation, Inter, or Final.", 400, "INVALID_LEVEL");
+  }
+
+  return {
+    name: normalizedName,
+    srNo: normalizedSrNo,
+    level: normalizedLevel,
+  };
+};
+
+const normalizeStudentStatus = (value, fallback = "ACTIVE") => {
+  const normalized = String(value || fallback).trim().toUpperCase();
+  return normalized === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+};
 
 const normalizeQuery = (query = {}) => ({
   page: Math.max(Number(query.page) || 1, 1),
@@ -368,6 +410,12 @@ export const superAdminService = {
 
   createStudent: (payload) =>
     withMutation((db) => {
+      const identity = ensureStudentIdentityPayload({
+        name: payload?.name,
+        srNo: payload?.srNo,
+        level: payload?.level,
+      });
+
       const normalizedEmail = normalizeEmail(payload.email);
       if (!normalizedEmail) {
         throw new ApiError("Email is required.", 400, "EMAIL_REQUIRED");
@@ -389,11 +437,11 @@ export const superAdminService = {
         students: [
           {
             id: nextId("stu"),
-            name: payload.name,
+            name: identity.name,
             email: normalizedEmail,
-            srNo: payload.srNo,
-            level: payload.level,
-            status: payload.status || "ACTIVE",
+            srNo: identity.srNo,
+            level: identity.level,
+            status: normalizeStudentStatus(payload?.status),
             passwordHash: hashPassword(password),
             forcePasswordChange: toBoolean(payload.forcePasswordChange, true),
             passwordReset: null,
@@ -407,6 +455,13 @@ export const superAdminService = {
 
   updateStudent: (id, payload) =>
     withMutation((db) => {
+      const studentIndex = db.students.findIndex((item) => sameId(item.id, id));
+      if (studentIndex < 0) {
+        throw new ApiError("Student not found.", 404, "STUDENT_NOT_FOUND");
+      }
+
+      const currentStudent = db.students[studentIndex];
+
       const {
         password: _password,
         passwordHash: _passwordHash,
@@ -414,27 +469,68 @@ export const superAdminService = {
         ...safePayload
       } = payload || {};
 
+      let normalizedEmail = currentStudent.email;
+      if (Object.prototype.hasOwnProperty.call(safePayload, "email")) {
+        normalizedEmail = normalizeEmail(safePayload.email);
+        if (!normalizedEmail) {
+          throw new ApiError("Email is required.", 400, "EMAIL_REQUIRED");
+        }
+
+        const duplicate = db.students.some(
+          (item, index) => index !== studentIndex && normalizeEmail(item.email) === normalizedEmail
+        );
+        if (duplicate) {
+          throw new ApiError("A student with this email already exists.", 409, "EMAIL_EXISTS");
+        }
+      }
+
+      const hasName = Object.prototype.hasOwnProperty.call(safePayload, "name");
+      const hasSrNo = Object.prototype.hasOwnProperty.call(safePayload, "srNo");
+      const hasLevel = Object.prototype.hasOwnProperty.call(safePayload, "level");
+      const identityPatch =
+        hasName || hasSrNo || hasLevel
+          ? ensureStudentIdentityPayload({
+              name: hasName ? safePayload.name : currentStudent.name,
+              srNo: hasSrNo ? safePayload.srNo : currentStudent.srNo,
+              level: hasLevel ? safePayload.level : currentStudent.level,
+            })
+          : {
+              name: currentStudent.name,
+              srNo: currentStudent.srNo,
+              level: currentStudent.level,
+            };
+
+      const nextStudents = [...db.students];
+      nextStudents[studentIndex] = {
+        ...currentStudent,
+        ...safePayload,
+        name: identityPatch.name,
+        srNo: identityPatch.srNo,
+        level: identityPatch.level,
+        status: Object.prototype.hasOwnProperty.call(safePayload, "status")
+          ? normalizeStudentStatus(safePayload.status, currentStudent.status)
+          : currentStudent.status,
+        email: normalizedEmail,
+      };
+
       return {
         ...db,
-        students: db.students.map((item) =>
-          sameId(item.id, id)
-            ? {
-                ...item,
-                ...safePayload,
-                email: safePayload.email
-                  ? normalizeEmail(safePayload.email)
-                  : item.email,
-              }
-            : item
-        ),
+        students: nextStudents,
       };
     }),
 
   deleteStudent: (id) =>
-    withMutation((db) => ({
-      ...db,
-      students: db.students.filter((item) => !sameId(item.id, id)),
-    })),
+    withMutation((db) => {
+      const exists = db.students.some((item) => sameId(item.id, id));
+      if (!exists) {
+        throw new ApiError("Student not found.", 404, "STUDENT_NOT_FOUND");
+      }
+
+      return {
+        ...db,
+        students: db.students.filter((item) => !sameId(item.id, id)),
+      };
+    }),
 
   resetStudentPassword: async (id, payload = {}) =>
     withMockLatency(() => {
@@ -494,6 +590,11 @@ export const superAdminService = {
   registerStudent: async (payload) =>
     withMockLatency(() => {
       const db = getDb();
+      const identity = ensureStudentIdentityPayload({
+        name: payload?.name,
+        srNo: payload?.srno || payload?.srNo,
+        level: payload?.level,
+      });
       const normalizedEmail = normalizeEmail(payload.email);
       const password = String(payload.password || "");
 
@@ -513,10 +614,10 @@ export const superAdminService = {
       const nowIso = new Date().toISOString();
       const student = normalizeStudent({
         id: nextId("stu"),
-        name: payload.name,
+        name: identity.name,
         email: normalizedEmail,
-        srNo: payload.srno || payload.srNo,
-        level: payload.level,
+        srNo: identity.srNo,
+        level: identity.level,
         status: "ACTIVE",
         passwordHash: hashPassword(password),
         forcePasswordChange: false,
@@ -570,6 +671,11 @@ export const superAdminService = {
       );
 
       if (student && verifyPassword(normalizedPassword, student.passwordHash)) {
+        const studentStatus = normalizeStudentStatus(student.status);
+        if (studentStatus !== "ACTIVE") {
+          throw new ApiError("Student account is inactive. Please contact Super Admin.", 403, "ACCOUNT_INACTIVE");
+        }
+
         return {
           user: {
             id: student.id,

@@ -29,12 +29,31 @@ const ResultPage = () => {
   });
   const result = routeResult || persistedResult;
   const autoSubmitted = Boolean(location.state?.autoSubmitted);
+  const questionResults = Array.isArray(result?.questions) ? result.questions : [];
 
   const metrics = useMemo(() => {
-    if (!result) return null;
+    if (!result) {
+      return {
+        totalQuestions: 0,
+        attempted: 0,
+        notAnswered: 0,
+        correct: 0,
+        wrong: 0,
+        scorePercent: 0,
+        accuracy: 0,
+      };
+    }
 
     if (result.metrics) {
-      return result.metrics;
+      return {
+        totalQuestions: Number(result.metrics.totalQuestions || 0),
+        attempted: Number(result.metrics.attempted || 0),
+        notAnswered: Number(result.metrics.notAnswered || 0),
+        correct: Number(result.metrics.correct || 0),
+        wrong: Number(result.metrics.wrong || 0),
+        scorePercent: Number(result.metrics.scorePercent || 0),
+        accuracy: Number(result.metrics.accuracy || 0),
+      };
     }
 
     if (result.summary) {
@@ -52,12 +71,18 @@ const ResultPage = () => {
       };
     }
 
-    return null;
+    return {
+      totalQuestions: 0,
+      attempted: 0,
+      notAnswered: 0,
+      correct: 0,
+      wrong: 0,
+      scorePercent: 0,
+      accuracy: 0,
+    };
   }, [result]);
 
   const summaryTiles = useMemo(() => {
-    if (!metrics) return [];
-
     return [
       { label: "Total Questions", value: metrics.totalQuestions },
       { label: "Attempted", value: metrics.attempted },
@@ -78,7 +103,9 @@ const ResultPage = () => {
     navigate(routeBuilders.assessmentSession.root);
   };
 
-  const canRetryChapterTest = Boolean(result?.subject?.id && result?.chapter?.id);
+  const canRetryChapterTest = Boolean(
+    result?.subject?.id && result?.chapter?.id && (result?.difficulty?.id || "")
+  );
 
   if (!result) {
     return (
@@ -198,7 +225,7 @@ const ResultPage = () => {
         </header>
 
         <Suspense fallback={<p className="result-loading">Loading results...</p>}>
-          {result.questions.map((question, index) => (
+          {questionResults.map((question, index) => (
             <ResultCard key={question.id} question={question} index={index} />
           ))}
         </Suspense>
