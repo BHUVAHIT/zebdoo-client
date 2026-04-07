@@ -39,9 +39,13 @@ export const useSubmitAttempt = () => {
       submitInFlightRef.current = true;
       finalizeQuestionTiming();
 
-      const { subject, chapter, difficulty, questions, answers, timer } =
-        useTestFlowStore.getState();
       const {
+        subject,
+        chapter,
+        difficulty,
+        questions,
+        answers,
+        timer,
         attemptMode,
         smartGoal,
         questionTimeSpent,

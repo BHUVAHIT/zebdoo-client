@@ -18,7 +18,7 @@ const AttemptQuestionCard = ({
   onToggleMark,
   onToggleBookmark,
   onSaveNote,
-  onFocus,
+  onFocusQuestion,
 }) => {
   const hasAnswer = selectedOption !== null && selectedOption !== undefined;
 
@@ -27,8 +27,8 @@ const AttemptQuestionCard = ({
       className={`mcq-question-card ${isActive ? "is-active" : ""}`}
       id={`question-${index + 1}`}
       tabIndex={0}
-      onFocusCapture={onFocus}
-      onClickCapture={onFocus}
+      onFocusCapture={() => onFocusQuestion(question.id)}
+      onClickCapture={() => onFocusQuestion(question.id)}
     >
       <header className="mcq-question-card__header">
         <div>
@@ -140,7 +140,7 @@ AttemptQuestionCard.propTypes = {
   onToggleMark: PropTypes.func.isRequired,
   onToggleBookmark: PropTypes.func.isRequired,
   onSaveNote: PropTypes.func.isRequired,
-  onFocus: PropTypes.func.isRequired,
+  onFocusQuestion: PropTypes.func.isRequired,
 };
 
 AttemptQuestionCard.defaultProps = {

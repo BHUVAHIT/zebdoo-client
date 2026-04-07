@@ -1,7 +1,9 @@
-import { getDefaultAppRoute, normalizeRole, ROLES } from "./routePaths";
+import {
+	getDefaultAppRoute,
+	isStudentRole,
+	isSuperAdminRole,
+} from "./routePaths";
 
-export const isStudentRole = (role) => normalizeRole(role) === ROLES.STUDENT;
-
-export const isSuperAdminRole = (role) => normalizeRole(role) === ROLES.SUPER_ADMIN;
+export { isStudentRole, isSuperAdminRole };
 
 export const resolveRoleHomeRoute = (role) => getDefaultAppRoute(role);

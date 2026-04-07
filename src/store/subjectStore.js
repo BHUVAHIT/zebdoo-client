@@ -5,10 +5,9 @@ import {
   createJSONStorage,
   subscribeWithSelector,
 } from "zustand/middleware";
+import { normalizeId } from "./normalize";
 
 const STORE_NAME = "zebdoo:subject-store:v1";
-
-const normalizeId = (value) => String(value ?? "").trim();
 
 const normalizeSubject = (subject = {}) => ({
   ...subject,

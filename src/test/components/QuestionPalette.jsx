@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import PropTypes from "prop-types";
 
 const hasAnswer = (value) => value !== null && value !== undefined;
@@ -24,25 +24,38 @@ const QuestionPalette = ({
   activeQuestionId,
   onQuestionPick,
 }) => {
-  const counts = questions.reduce(
-    (acc, question) => {
-      const questionId = question.id;
+  const { counts, statusByQuestionId } = useMemo(() => {
+    const nextCounts = {
+      answered: 0,
+      notAnswered: 0,
+      marked: 0,
+    };
+    const nextStatusMap = {};
+
+    for (let index = 0; index < questions.length; index += 1) {
+      const questionId = questions[index].id;
       const answered = hasAnswer(answers[questionId]);
       const marked = Boolean(markedForReview[questionId]);
       const seen = Boolean(visited[questionId]);
 
-      if (answered) acc.answered += 1;
-      if (marked) acc.marked += 1;
-      if (seen && !answered) acc.notAnswered += 1;
+      if (answered) nextCounts.answered += 1;
+      if (marked) nextCounts.marked += 1;
+      if (seen && !answered) nextCounts.notAnswered += 1;
 
-      return acc;
-    },
-    {
-      answered: 0,
-      notAnswered: 0,
-      marked: 0,
+      nextStatusMap[questionId] = getQuestionStatus({
+        questionId,
+        answers,
+        visited,
+        markedForReview,
+        activeQuestionId,
+      });
     }
-  );
+
+    return {
+      counts: nextCounts,
+      statusByQuestionId: nextStatusMap,
+    };
+  }, [activeQuestionId, answers, markedForReview, questions, visited]);
 
   return (
     <aside className="mcq-palette" aria-label="Question palette">
@@ -74,13 +87,7 @@ const QuestionPalette = ({
 
       <div className="mcq-palette__grid">
         {questions.map((question, index) => {
-          const status = getQuestionStatus({
-            questionId: question.id,
-            answers,
-            visited,
-            markedForReview,
-            activeQuestionId,
-          });
+          const status = statusByQuestionId[question.id];
 
           return (
             <button

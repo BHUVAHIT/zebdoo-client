@@ -56,6 +56,17 @@ const normalizeId = (value) => String(value || "").trim();
 
 const containsUnsafePathToken = (value) => /[/?#]/.test(normalizeId(value));
 
+const buildQuestionIndexById = (questions = []) =>
+  questions.reduce((acc, question, index) => {
+    const id = normalizeId(question?.id);
+    if (!id) {
+      return acc;
+    }
+
+    acc[id] = index;
+    return acc;
+  }, {});
+
 const composeAttemptKey = ({
   subjectId,
   chapterId,
@@ -72,6 +83,7 @@ const clearAttemptArtifacts = (state, nextStatus = ATTEMPT_STATUS.IDLE) => ({
   attemptStatus: nextStatus,
   attemptKey: null,
   questions: [],
+  questionIndexById: {},
   answers: {},
   visited: {},
   markedForReview: {},
@@ -220,6 +232,7 @@ const initialState = {
   engineProfile: null,
   attemptKey: null,
   questions: [],
+  questionIndexById: {},
   answers: {},
   visited: {},
   markedForReview: {},
@@ -362,6 +375,7 @@ export const useTestFlowStore = create(
         set((state) => {
           const now = Date.now();
           const firstQuestionId = questions[0]?.id ?? null;
+          const questionIndexById = buildQuestionIndexById(questions);
           const attemptTestId = buildAttemptTestId({
             subjectId: state.subject?.id,
             chapterId: state.chapter?.id,
@@ -391,6 +405,7 @@ export const useTestFlowStore = create(
             ),
             engineProfile: engineProfile || null,
             questions,
+            questionIndexById,
             answers: {},
             visited: firstQuestionId ? { [firstQuestionId]: true } : {},
             markedForReview: {},
@@ -429,7 +444,7 @@ export const useTestFlowStore = create(
           const parsedSize = Number(size);
           const nextSize = Number.isFinite(parsedSize) && parsedSize > 0 ? parsedSize : DEFAULT_PAGE_SIZE;
           const currentQuestionIndex = state.activeQuestionId
-            ? state.questions.findIndex((item) => item.id === state.activeQuestionId)
+            ? Number(state.questionIndexById[normalizeId(state.activeQuestionId)])
             : 0;
           const baseIndex = currentQuestionIndex >= 0 ? currentQuestionIndex : 0;
           const nextPage = Math.floor(baseIndex / nextSize) + 1;
@@ -457,7 +472,7 @@ export const useTestFlowStore = create(
           const pageStartIndex = (nextPage - 1) * state.pageSize;
           const pageEndIndex = pageStartIndex + state.pageSize;
           const activeQuestionIndex = state.activeQuestionId
-            ? state.questions.findIndex((item) => item.id === state.activeQuestionId)
+            ? Number(state.questionIndexById[normalizeId(state.activeQuestionId)])
             : -1;
           const isActiveInsideTargetPage =
             activeQuestionIndex >= pageStartIndex && activeQuestionIndex < pageEndIndex;
@@ -707,12 +722,15 @@ export const useTestFlowStore = create(
         timer: state.timer,
         tabSwitchCount: state.tabSwitchCount,
       }),
-      version: 6,
+      version: 7,
       storage: safePersistStorage,
       merge: (persistedState, currentState) =>
         sanitizeHydratedFlowState({
           ...currentState,
           ...(persistedState || {}),
+          questionIndexById: buildQuestionIndexById(
+            persistedState?.questions || currentState.questions
+          ),
         }),
     }
   )
@@ -722,14 +740,19 @@ export const selectAttemptStats = (state) => {
   const attempted = Object.values(state.answers).filter(hasAnswerValue).length;
   const totalQuestions = state.questions.length;
   const notAnswered = Math.max(totalQuestions - attempted, 0);
-  const reviewMarked = state.questions.reduce(
-    (acc, question) => acc + (state.markedForReview[question.id] ? 1 : 0),
-    0
-  );
-  const visitedCount = state.questions.reduce(
-    (acc, question) => acc + (state.visited[question.id] ? 1 : 0),
-    0
-  );
+  let reviewMarked = 0;
+  let visitedCount = 0;
+
+  for (let index = 0; index < state.questions.length; index += 1) {
+    const questionId = state.questions[index]?.id;
+    if (state.markedForReview[questionId]) {
+      reviewMarked += 1;
+    }
+    if (state.visited[questionId]) {
+      visitedCount += 1;
+    }
+  }
+
   const progress = totalQuestions ? Math.round((attempted / totalQuestions) * 100) : 0;
 
   return {

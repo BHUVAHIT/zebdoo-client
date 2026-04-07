@@ -603,7 +603,7 @@ const AttemptPage = () => {
                 onToggleMark={toggleMarkForReview}
                 onToggleBookmark={toggleBookmark}
                 onSaveNote={setQuestionNote}
-                onFocus={() => setActiveQuestionId(question.id)}
+                onFocusQuestion={setActiveQuestionId}
               />
             );
           })}
