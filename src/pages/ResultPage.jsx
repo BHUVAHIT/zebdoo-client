@@ -14,6 +14,7 @@ import {
 import { routeBuilders } from "../routes/routePaths";
 import { SMART_TEST_GOALS } from "../test/config/smartTestEngine";
 import { CardGridSkeleton } from "../components/loading/LoadingPrimitives";
+import { buildPostTestInsights } from "../test/utils/performanceInsights";
 
 const ResultCard = lazy(() => import("../components/ResultCard"));
 
@@ -31,6 +32,14 @@ const ResultPage = () => {
   const result = routeResult || persistedResult;
   const autoSubmitted = Boolean(location.state?.autoSubmitted);
   const questionResults = Array.isArray(result?.questions) ? result.questions : [];
+  const scopedHistory = useMemo(
+    () =>
+      loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+        scopeId,
+        migrateLegacy: false,
+      }),
+    [scopeId]
+  );
 
   const metrics = useMemo(() => {
     if (!result) {
@@ -98,6 +107,53 @@ const ResultPage = () => {
       },
     ];
   }, [metrics, result?.timeTakenSeconds]);
+
+  const visualSummary = useMemo(() => {
+    const attemptedRate = metrics.totalQuestions
+      ? Number(((metrics.attempted / metrics.totalQuestions) * 100).toFixed(2))
+      : 0;
+    const completionRate = metrics.totalQuestions
+      ? Number((((metrics.totalQuestions - metrics.notAnswered) / metrics.totalQuestions) * 100).toFixed(2))
+      : 0;
+
+    return [
+      {
+        id: "score",
+        label: "Score",
+        value: `${metrics.scorePercent}%`,
+        percent: Math.max(Math.min(metrics.scorePercent, 100), 0),
+      },
+      {
+        id: "accuracy",
+        label: "Accuracy",
+        value: `${metrics.accuracy}%`,
+        percent: Math.max(Math.min(metrics.accuracy, 100), 0),
+      },
+      {
+        id: "attempt-rate",
+        label: "Attempt Rate",
+        value: `${attemptedRate}%`,
+        percent: Math.max(Math.min(attemptedRate, 100), 0),
+      },
+      {
+        id: "completion",
+        label: "Completion",
+        value: `${completionRate}%`,
+        percent: Math.max(Math.min(completionRate, 100), 0),
+      },
+    ];
+  }, [metrics.accuracy, metrics.attempted, metrics.notAnswered, metrics.scorePercent, metrics.totalQuestions]);
+
+  const postTestInsights = useMemo(
+    () => buildPostTestInsights({ result, history: scopedHistory }),
+    [result, scopedHistory]
+  );
+
+  const recommendedDifficulty = useMemo(() => {
+    if (metrics.accuracy < 55) return "easy";
+    if (metrics.accuracy < 75) return "medium";
+    return result?.difficulty?.id || "medium";
+  }, [metrics.accuracy, result?.difficulty?.id]);
 
   const retakeTest = () => {
     removeScopedFromStorage(TEST_STORAGE_KEYS.LAST_RESULT, scopeId);
@@ -214,6 +270,86 @@ const ResultPage = () => {
             <strong>{tile.value}</strong>
           </article>
         ))}
+      </section>
+
+      <section className="mcq-insight-shell" aria-label="Post test intelligence">
+        <div className="mcq-result-visual-grid">
+          {visualSummary.map((item) => (
+            <article key={item.id} className="mcq-result-visual-card">
+              <div className="mcq-result-visual-card__head">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+              <div className="mcq-insight-progress__track" aria-hidden="true">
+                <span style={{ width: `${item.percent}%` }} />
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <article className="mcq-insight-card mcq-insight-card--posttest">
+          <header className="mcq-insight-card__head">
+            <div>
+              <h3>Actionable Feedback</h3>
+              <p>{postTestInsights.progressLine}</p>
+            </div>
+          </header>
+
+          {postTestInsights.weakAreas.length > 0 ? (
+            <div className="mcq-insight-list" role="list">
+              {postTestInsights.weakAreas.map((item) => (
+                <article key={item.id} className="mcq-insight-list__item" role="listitem">
+                  <strong>{item.label}</strong>
+                  <p>{item.recommendation}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="mcq-insight-card__recommendation">
+              Excellent work. No critical weak spots detected in this attempt.
+            </p>
+          )}
+
+          <div className="mcq-inline-muted mcq-inline-muted--stacked">
+            {postTestInsights.improvementTips.map((tip) => (
+              <p key={tip}>{tip}</p>
+            ))}
+          </div>
+
+          <footer className="mcq-insight-card__footer">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() =>
+                navigate(
+                  routeBuilders.assessmentSession.difficulty(
+                    result.subject?.id,
+                    result.chapter?.id
+                  )
+                )
+              }
+              disabled={!result.subject?.id || !result.chapter?.id}
+            >
+              Improve This Chapter
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() =>
+                navigate(
+                  `${routeBuilders.assessmentSession.attempt(
+                    result.subject?.id,
+                    result.chapter?.id,
+                    recommendedDifficulty
+                  )}?goal=${SMART_TEST_GOALS.EXAM_SIMULATION}`
+                )
+              }
+              disabled={!result.subject?.id || !result.chapter?.id}
+            >
+              Practice Now
+            </button>
+          </footer>
+        </article>
       </section>
 
       <section className="result-list">

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import SelectionCard from "../components/SelectionCard";
 import TestStepHeader from "../components/TestStepHeader";
 import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
@@ -21,16 +20,52 @@ import {
   getSmartGoalProfile,
   SMART_TEST_GOALS,
 } from "../config/smartTestEngine";
-import { TEST_MODES } from "../../utils/constants";
+import { TEST_MODES, TEST_STORAGE_KEYS } from "../../utils/constants";
+import { useAuthStore } from "../../store/authStore";
+import {
+  loadScopedFromStorage,
+  resolveStorageScopeId,
+} from "../../utils/storageScope";
+import { buildDifficultyDashboard } from "../utils/performanceInsights";
 
 const DifficultySelectionPage = () => {
   const { subjectId, chapterId } = useParams();
   const navigate = useNavigate();
   const catalogVersion = useCatalogStore((state) => state.version);
+  const currentUser = useAuthStore((state) => state.user);
+  const scopeId = resolveStorageScopeId(currentUser);
 
   const [difficulties, setDifficulties] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const scopedHistory = useMemo(
+    () =>
+      loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+        scopeId,
+        migrateLegacy: false,
+      }),
+    [scopeId]
+  );
+
+  const difficultyDashboard = useMemo(
+    () =>
+      buildDifficultyDashboard({
+        history: scopedHistory,
+        subjectId,
+        chapterId,
+      }),
+    [chapterId, scopedHistory, subjectId]
+  );
+
+  const difficultyStatsMap = useMemo(
+    () =>
+      difficultyDashboard.entries.reduce((acc, item) => {
+        acc[item.id] = item;
+        return acc;
+      }, {}),
+    [difficultyDashboard.entries]
+  );
 
   const { subject, chapter, difficulty, setSubject, setChapter, setDifficulty } =
     useTestFlowStore(
@@ -55,6 +90,7 @@ const DifficultySelectionPage = () => {
     () => getAdaptiveDifficultyRecommendation({ subjectId, chapterId }),
     [chapterId, subjectId]
   );
+
   const recommendedGoal = SMART_TEST_GOALS.EXAM_SIMULATION;
   const recommendedGoalLabel = useMemo(
     () => getSmartGoalProfile(recommendedGoal).label,
@@ -125,15 +161,15 @@ const DifficultySelectionPage = () => {
       />
 
       <p className="mcq-inline-muted">
-        Adaptive suggestion: <strong>{adaptiveDifficulty.difficultyId.toUpperCase()}</strong>.
-        {" "}
+        Adaptive suggestion: <strong>{adaptiveDifficulty.difficultyId.toUpperCase()}</strong>.{" "}
         {adaptiveDifficulty.reason}
       </p>
       <p className="mcq-inline-muted">
-        Suggested goal for this chapter: <strong>{recommendedGoalLabel}</strong>.
-        {" "}
-        Student flow now runs in a single exam mode for consistency.
+        Suggested goal for this chapter: <strong>{recommendedGoalLabel}</strong>. Student
+        flow now runs in a single exam mode for consistency.
       </p>
+      <p className="mcq-inline-muted">{difficultyDashboard.insight}</p>
+      <p className="mcq-inline-warning">{difficultyDashboard.improvementPath}</p>
 
       {loading ? <LoadingState label="Loading difficulty levels..." /> : null}
 
@@ -155,39 +191,102 @@ const DifficultySelectionPage = () => {
       ) : null}
 
       {!loading && !error && difficulties.length > 0 ? (
-        <div className="mcq-selection-grid">
-          {difficulties.map((item) => (
-            <SelectionCard
-              key={item.id}
-              title={item.label}
-              subtitle={`${item.detail}${
-                adaptiveDifficulty.difficultyId === item.id
-                  ? " (Recommended)"
-                  : ""
-              }`}
-              metaLeft={`${item.questionCount} questions`}
-              metaRight={`${Math.floor(item.durationSeconds / 60)} mins`}
-              selected={difficulty?.id === item.id}
-              tone={item.colorToken}
-              disabled={!item.isAvailable}
-              onClick={() => {
-                if (!item.isAvailable) return;
-                setDifficulty(item);
-                saveAttemptPreferences({
-                  preferredMode: TEST_MODES.EXAM,
-                  preferredDifficulty: item.id,
-                });
-                navigate(
-                  `${routeBuilders.assessmentSession.attempt(
-                    subjectId,
-                    chapterId,
-                    item.id
-                  )}?goal=${recommendedGoal}`
-                );
-              }}
-            />
-          ))}
-        </div>
+        <section className="mcq-insight-shell" aria-label="Difficulty performance breakdown">
+          <div className="mcq-insight-grid mcq-insight-grid--difficulty">
+            {difficulties.map((level) => {
+              const levelId = String(level.id || "").toLowerCase();
+              const stat = difficultyStatsMap[levelId] || {
+                attempts: 0,
+                accuracy: 0,
+                avgTimePerQuestion: 0,
+                fillPercent: 0,
+                hint: "Attempt this level once to unlock insights.",
+                status: { id: "average", label: "Average" },
+                label: level.label,
+              };
+              const isRecommended = adaptiveDifficulty.difficultyId === levelId;
+              const isDisabled = !level.isAvailable;
+
+              return (
+                <article
+                  key={level.id}
+                  className={`mcq-insight-card mcq-insight-card--difficulty is-${stat.status.id} ${
+                    difficulty?.id === level.id ? "is-selected" : ""
+                  } ${isDisabled ? "is-disabled" : ""}`}
+                >
+                  <header className="mcq-insight-card__head">
+                    <div>
+                      <h3>
+                        {level.label}
+                        {isRecommended ? " (Recommended)" : ""}
+                      </h3>
+                      <p>{level.questionCount} questions</p>
+                    </div>
+                    <span className={`mcq-status-chip is-${stat.status.id}`}>
+                      {stat.status.label}
+                    </span>
+                  </header>
+
+                  <div className="mcq-insight-card__stats">
+                    <div>
+                      <span>Attempted</span>
+                      <strong>{stat.attempts}</strong>
+                    </div>
+                    <div>
+                      <span>Accuracy</span>
+                      <strong>{stat.accuracy}%</strong>
+                    </div>
+                    <div>
+                      <span>Avg Time / Q</span>
+                      <strong>{stat.avgTimePerQuestion || 0}s</strong>
+                    </div>
+                    <div>
+                      <span>Suggested Time</span>
+                      <strong>{Math.floor(Number(level.durationSeconds || 0) / 60)} mins</strong>
+                    </div>
+                  </div>
+
+                  <div className="mcq-insight-progress">
+                    <div className="mcq-insight-progress__row">
+                      <span>Accuracy Trend</span>
+                      <strong>{stat.fillPercent}%</strong>
+                    </div>
+                    <div className="mcq-insight-progress__track" aria-hidden="true">
+                      <span style={{ width: `${stat.fillPercent}%` }} />
+                    </div>
+                  </div>
+
+                  <p className="mcq-insight-card__recommendation">{stat.hint}</p>
+
+                  <footer className="mcq-insight-card__footer">
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (isDisabled) return;
+                        setDifficulty(level);
+                        saveAttemptPreferences({
+                          preferredMode: TEST_MODES.EXAM,
+                          preferredDifficulty: level.id,
+                        });
+                        navigate(
+                          `${routeBuilders.assessmentSession.attempt(
+                            subjectId,
+                            chapterId,
+                            level.id
+                          )}?goal=${recommendedGoal}`
+                        );
+                      }}
+                    >
+                      Start {level.label}
+                    </button>
+                  </footer>
+                </article>
+              );
+            })}
+          </div>
+        </section>
       ) : null}
     </section>
   );

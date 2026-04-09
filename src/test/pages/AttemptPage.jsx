@@ -39,6 +39,14 @@ import {
 } from "../config/smartTestEngine";
 import { TEST_MODES } from "../../utils/constants";
 import { useCatalogStore } from "../../store/catalogStore";
+import { useAuthStore } from "../../store/authStore";
+import { TEST_STORAGE_KEYS } from "../../utils/constants";
+import { formatSeconds } from "../../utils/helpers";
+import {
+  loadScopedFromStorage,
+  resolveStorageScopeId,
+} from "../../utils/storageScope";
+import { buildPreTestBriefing } from "../utils/performanceInsights";
 
 const AttemptPage = () => {
   const { subjectId, chapterId, difficultyLevel } = useParams();
@@ -55,6 +63,17 @@ const AttemptPage = () => {
   const catalogVersion = useCatalogStore((state) => state.version);
   const catalogVersionRef = useRef(catalogVersion);
   const { pushToast } = useAppToast();
+  const currentUser = useAuthStore((state) => state.user);
+  const scopeId = resolveStorageScopeId(currentUser);
+
+  const scopedHistory = useMemo(
+    () =>
+      loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+        scopeId,
+        migrateLegacy: false,
+      }),
+    [scopeId]
+  );
 
   const {
     subject,
@@ -147,6 +166,21 @@ const AttemptPage = () => {
   const effectiveAttemptMode = TEST_MODES.EXAM;
   const activeGoalLabel = effectiveProfile.label;
   const recommendedGoalLabel = goalProfile.label;
+
+  const preTestBriefing = useMemo(
+    () =>
+      buildPreTestBriefing({
+        history: scopedHistory,
+        subject,
+        chapter,
+        difficulty,
+        plannedDurationSeconds: Math.round(
+          Number(difficulty?.durationSeconds || 0) *
+            Number(effectiveProfile?.timerMultiplier || 1)
+        ),
+      }),
+    [chapter, difficulty, effectiveProfile?.timerMultiplier, scopedHistory, subject]
+  );
 
   const stats = useTestFlowStore(useShallow(selectAttemptStats));
   const { submitAttempt, submitting, submitError, clearSubmitError } = useSubmitAttempt();
@@ -536,6 +570,44 @@ const AttemptPage = () => {
       <p className="mcq-inline-muted">
         Mode: {recommendedGoalLabel}. Current goal: {activeGoalLabel}.
       </p>
+
+      <section className="mcq-insight-shell" aria-label="Pre-test intelligence">
+        <div className="mcq-insight-card mcq-insight-card--pretest">
+          <header className="mcq-insight-card__head">
+            <div>
+              <h3>Before You Start</h3>
+              <p>
+                {subject?.name || "Subject"} / {chapter?.name || "Chapter"}
+              </p>
+            </div>
+            <span className={`mcq-status-chip is-${preTestBriefing.chapterStrength.id}`}>
+              {preTestBriefing.chapterStrength.label}
+            </span>
+          </header>
+
+          <div className="mcq-insight-card__stats">
+            <div>
+              <span>Chapter Strength</span>
+              <strong>{preTestBriefing.chapterScore}%</strong>
+            </div>
+            <div>
+              <span>Expected Difficulty</span>
+              <strong>{preTestBriefing.expectedDifficulty}</strong>
+            </div>
+            <div>
+              <span>Suggested Time</span>
+              <strong>{formatSeconds(preTestBriefing.suggestedDurationSeconds)}</strong>
+            </div>
+            <div>
+              <span>Avg Time / Q</span>
+              <strong>{preTestBriefing.avgTimePerQuestion || 0}s</strong>
+            </div>
+          </div>
+
+          <p className="mcq-insight-card__recommendation">{preTestBriefing.guidance}</p>
+        </div>
+      </section>
+
       {adaptiveDifficulty.difficultyId !== normalizedDifficultyLevel ? (
         <p className="mcq-inline-warning">
           Adaptive hint: {adaptiveDifficulty.reason} Recommended difficulty: {adaptiveDifficulty.difficultyId.toUpperCase()}.

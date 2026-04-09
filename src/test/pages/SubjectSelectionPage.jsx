@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import SelectionCard from "../components/SelectionCard";
 import TestStepHeader from "../components/TestStepHeader";
 import LoadingState from "../components/LoadingState";
 import EmptyState from "../components/EmptyState";
@@ -10,19 +9,47 @@ import { useShallow } from "zustand/react/shallow";
 import { ROUTES, routeBuilders } from "../../routes/routePaths";
 import { useAppToast } from "../../components/notifications/useAppToast";
 import { useCatalogStore } from "../../store/catalogStore";
+import { useAuthStore } from "../../store/authStore";
+import { TEST_STORAGE_KEYS } from "../../utils/constants";
+import { formatSeconds } from "../../utils/helpers";
+import {
+  loadScopedFromStorage,
+  resolveStorageScopeId,
+} from "../../utils/storageScope";
 import {
   buildAttemptSnapshot,
   isSubmittedAttempt,
   isValidAttempt,
 } from "../utils/attemptResume";
+import { buildSubjectDashboard } from "../utils/performanceInsights";
 
 const SubjectSelectionPage = () => {
   const navigate = useNavigate();
   const { pushToast } = useAppToast();
   const catalogVersion = useCatalogStore((state) => state.version);
+  const currentUser = useAuthStore((state) => state.user);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const scopeId = resolveStorageScopeId(currentUser);
+
+  const scopedHistory = useMemo(
+    () =>
+      loadScopedFromStorage(TEST_STORAGE_KEYS.RESULT_HISTORY, [], {
+        scopeId,
+        migrateLegacy: false,
+      }),
+    [scopeId]
+  );
+
+  const subjectDashboard = useMemo(
+    () =>
+      buildSubjectDashboard({
+        subjects,
+        history: scopedHistory,
+      }),
+    [scopedHistory, subjects]
+  );
 
   const {
     subject,
@@ -203,22 +230,102 @@ const SubjectSelectionPage = () => {
       ) : null}
 
       {!loading && !error && subjects.length > 0 ? (
-        <div className="mcq-selection-grid">
-          {subjects.map((item) => (
-            <SelectionCard
-              key={item.id}
-              title={item.name}
-              subtitle={item.description}
-              metaLeft={`${item.chapterCount} chapters`}
-              metaRight={item.shortCode}
-              selected={subject?.id === item.id}
-              onClick={() => {
-                setSubject(item);
-                navigate(routeBuilders.assessmentSession.chapters(item.id));
-              }}
-            />
-          ))}
-        </div>
+        <section className="mcq-insight-shell" aria-label="Subject performance dashboard">
+          <div className="mcq-insight-summary-strip">
+            <article>
+              <span>Total Subjects</span>
+              <strong>{subjectDashboard.summary.totalSubjects}</strong>
+            </article>
+            <article>
+              <span>Attempted Subjects</span>
+              <strong>{subjectDashboard.summary.attemptedSubjects}</strong>
+            </article>
+            <article>
+              <span>Pending Subjects</span>
+              <strong>{subjectDashboard.summary.pendingSubjects}</strong>
+            </article>
+            <article>
+              <span>Overall Performance</span>
+              <strong>{subjectDashboard.summary.overallPerformance}%</strong>
+            </article>
+          </div>
+
+          <div className="mcq-inline-muted mcq-inline-muted--stacked" role="status">
+            {subjectDashboard.insights.map((insight) => (
+              <p key={insight}>{insight}</p>
+            ))}
+          </div>
+
+          <div className="mcq-insight-grid">
+            {subjectDashboard.cards.map((item) => (
+              <article
+                key={item.id}
+                className={`mcq-insight-card mcq-insight-card--subject is-${item.status.id} ${
+                  subject?.id === item.id ? "is-selected" : ""
+                }`}
+              >
+                <header className="mcq-insight-card__head">
+                  <div>
+                    <h3>{item.name}</h3>
+                    <p>{item.testsAttempted} tests attempted</p>
+                  </div>
+                  <div className="mcq-insight-card__head-chips">
+                    <span className={`mcq-status-chip is-${item.status.id}`}>
+                      {item.status.label}
+                    </span>
+                    <span className={`mcq-trend-chip is-${item.trend.direction}`}>
+                      {item.trend.icon} {item.trend.label}
+                    </span>
+                  </div>
+                </header>
+
+                <div className="mcq-insight-card__stats">
+                  <div>
+                    <span>Pending Tests</span>
+                    <strong>{item.pendingTests}</strong>
+                  </div>
+                  <div>
+                    <span>Average Score</span>
+                    <strong>{item.averageScore}%</strong>
+                  </div>
+                  <div>
+                    <span>Accuracy</span>
+                    <strong>{item.averageAccuracy}%</strong>
+                  </div>
+                  <div>
+                    <span>Total Time</span>
+                    <strong>{formatSeconds(item.totalTimeSeconds)}</strong>
+                  </div>
+                </div>
+
+                <div className="mcq-insight-progress">
+                  <div className="mcq-insight-progress__row">
+                    <span>Performance</span>
+                    <strong>{item.progressPercent}%</strong>
+                  </div>
+                  <div className="mcq-insight-progress__track" aria-hidden="true">
+                    <span style={{ width: `${item.progressPercent}%` }} />
+                  </div>
+                </div>
+
+                <p className="mcq-insight-card__recommendation">{item.insight}</p>
+
+                <footer className="mcq-insight-card__footer">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setSubject(subjects.find((entry) => entry.id === item.id) || null);
+                      navigate(routeBuilders.assessmentSession.chapters(item.id));
+                    }}
+                  >
+                    Continue in {item.name}
+                  </button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        </section>
       ) : null}
     </section>
   );
