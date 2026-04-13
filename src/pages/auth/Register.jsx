@@ -1,17 +1,20 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Formik, Form, Field, ErrorMessage, useFormikContext } from "formik";
 import * as Yup from "yup";
 import {
   ArrowRight,
+  Clock3,
+  Eye,
+  EyeOff,
+  GraduationCap,
   BookOpen,
-  Check,
-  CircleCheckBig,
   Lock,
   Mail,
   Phone,
   ShieldCheck,
   Sparkles,
+  User,
 } from "lucide-react";
 import { registerUser } from "../../api/auth";
 import { useAuthStore } from "../../store/authStore";
@@ -25,14 +28,6 @@ import {
 } from "../../modules/shared/student/studentFormContract";
 import "./register.css";
 
-const PASSWORD_REQUIREMENTS = [
-  { rule: (value) => value.length >= 8, label: "8+ characters" },
-  { rule: (value) => /[a-z]/.test(value), label: "lowercase" },
-  { rule: (value) => /[A-Z]/.test(value), label: "uppercase" },
-  { rule: (value) => /[0-9]/.test(value), label: "number" },
-  { rule: (value) => /[!@#$%^&*]/.test(value), label: "symbol" },
-];
-
 const FieldError = ({ name, id }) => (
   <ErrorMessage name={name}>
     {(msg) => (
@@ -43,29 +38,70 @@ const FieldError = ({ name, id }) => (
   </ErrorMessage>
 );
 
-const PasswordStrengthIndicator = ({ password }) => {
-  const meetsRequirement = (rule) => rule(password);
-  const metCount = PASSWORD_REQUIREMENTS.filter((r) => meetsRequirement(r.rule)).length;
-  const strengthLabel = ["Not set", "Weak", "Fair", "Good", "Strong", "Strong"][metCount];
-  const strengthTone = ["muted", "weak", "fair", "good", "strong", "strong"][metCount];
-
-  return (
-    <div className="register-password-strength" aria-live="polite">
-      <div className="register-password-strength__bars" role="presentation">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <span
-            key={i}
-            className={`register-password-strength__bar ${i < metCount ? "is-active" : ""}`}
-            data-tone={strengthTone}
-          />
-        ))}
-      </div>
-      <span className="register-password-strength__text" data-tone={strengthTone}>
-        Strength: {strengthLabel}
-      </span>
-    </div>
-  );
+const STREAM_VISUAL_PROFILES = {
+  default: {
+    badge: "Student-first onboarding",
+    spotlightTitle: "Designed for momentum",
+    spotlightCopy: "Set your profile once and get a guided dashboard tuned to your prep style.",
+    statPrimary: "Guided prep paths",
+    statSecondary: "1-min account setup",
+    themeClass: "register-story--default",
+  },
+  CA: {
+    badge: "CA pathway activated",
+    spotlightTitle: "Precision for CA milestones",
+    spotlightCopy: "Your ICAI profile and level-aware setup keep every session structured and outcome focused.",
+    statPrimary: "Level-wise CA planning",
+    statSecondary: "SR profile ready",
+    themeClass: "register-story--ca",
+  },
+  Science: {
+    badge: "Science journey unlocked",
+    spotlightTitle: "Built for concept mastery",
+    spotlightCopy: "Get a syllabus rhythm engineered for concept depth, chapter confidence, and exam readiness.",
+    statPrimary: "Concept mastery tracks",
+    statSecondary: "Physics-Chem-Bio ready",
+    themeClass: "register-story--science",
+  },
+  Commerce: {
+    badge: "Commerce track ready",
+    spotlightTitle: "Commerce strategy, simplified",
+    spotlightCopy: "Move through accounts and business topics with clear sequencing and measurable milestones.",
+    statPrimary: "Accounts and eco paths",
+    statSecondary: "Score-driven progression",
+    themeClass: "register-story--commerce",
+  },
 };
+
+const REGISTER_STORY_SLIDES = [
+  {
+    id: "journey",
+    imageSrc: "/student-commerce.svg",
+    title: "Start with clarity, move with confidence.",
+    description:
+      "Your onboarding flow adapts instantly, so every learner begins with the right structure and zero friction.",
+    caption: "A focused start changes the entire learning curve.",
+    chips: ["Adaptive onboarding", "Instant personalized setup"],
+  },
+  {
+    id: "results",
+    imageSrc: "/student-ca.svg",
+    title: "Disciplined systems create top results.",
+    description:
+      "From planning to revision cadence, Zebdoo helps students sustain momentum and convert effort into outcomes.",
+    caption: "Consistency, feedback, and measurable growth in one loop.",
+    chips: ["Progress checkpoints", "Smart revision cadence"],
+  },
+  {
+    id: "experience",
+    imageSrc: "/student-science.svg",
+    title: "One platform, every core learning need.",
+    description:
+      "Built for modern students with smooth UX, secure access, and guided journeys across streams and standards.",
+    caption: "A premium study experience designed for everyday execution.",
+    chips: ["Secure by default", "Designed for focus"],
+  },
+];
 
 const FormField = ({
   label,
@@ -74,13 +110,17 @@ const FormField = ({
   helperText,
   required,
   full,
+  className,
+  trailing,
   children,
 }) => {
   const { errors, touched } = useFormikContext();
   const hasError = Boolean(touched[name] && errors[name]);
 
   return (
-    <div className={`register-field-group ${full ? "register-field-group--full" : ""}`}>
+    <div
+      className={`register-field-group ${full ? "register-field-group--full" : ""} ${className || ""}`}
+    >
       <label htmlFor={name} className="register-label">
         {label}
         {required && <span aria-hidden="true">*</span>}
@@ -89,6 +129,7 @@ const FormField = ({
       <div className={`register-input-shell ${hasError ? "is-invalid" : ""}`}>
         {Icon && <Icon size={16} className="register-input-shell__icon" aria-hidden="true" />}
         {children}
+        {trailing}
       </div>
 
       {helperText && !hasError && (
@@ -101,7 +142,8 @@ const FormField = ({
   );
 };
 
-const RegisterForm = ({ navigate }) => {
+const RegisterForm = ({ navigate, onStreamVisualChange }) => {
+  const [showPassword, setShowPassword] = useState(false);
   const {
     errors,
     isSubmitting,
@@ -112,15 +154,18 @@ const RegisterForm = ({ navigate }) => {
 
   const handleStreamChange = (newStream) => {
     setFieldValue("stream", newStream);
+    onStreamVisualChange?.(newStream);
+
     if (newStream === "CA") {
       setFieldValue("standard", "");
       setFieldTouched("standard", false, false);
-    } else {
-      setFieldValue("srno", "");
-      setFieldValue("caLevel", "");
-      setFieldTouched("srno", false, false);
-      setFieldTouched("caLevel", false, false);
+      return;
     }
+
+    setFieldValue("srno", "");
+    setFieldValue("caLevel", "");
+    setFieldTouched("srno", false, false);
+    setFieldTouched("caLevel", false, false);
   };
 
   const handleMobileChange = (event) => {
@@ -136,14 +181,14 @@ const RegisterForm = ({ navigate }) => {
         </div>
       )}
 
-      <div className="register-grid">
+      <div className="register-grid register-grid--main">
         <FormField label="First Name" name="firstName" required>
           <Field
             as="input"
             id="firstName"
             name="firstName"
             type="text"
-            placeholder="John"
+            placeholder="First name"
             autoComplete="given-name"
             className="register-field"
           />
@@ -155,7 +200,7 @@ const RegisterForm = ({ navigate }) => {
             id="lastName"
             name="lastName"
             type="text"
-            placeholder="Doe"
+            placeholder="Last name"
             autoComplete="family-name"
             className="register-field"
           />
@@ -177,7 +222,7 @@ const RegisterForm = ({ navigate }) => {
           label="Mobile Number"
           name="mobile"
           icon={Phone}
-          helperText="India: 10-digit mobile number"
+          helperText="10-digit mobile number"
           required
         >
           <Field
@@ -211,16 +256,45 @@ const RegisterForm = ({ navigate }) => {
           </Field>
         </FormField>
 
+        <FormField
+          label="Password"
+          name="password"
+          icon={Lock}
+          required
+          trailing={(
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className={`register-password-toggle ${showPassword ? "is-active" : ""}`}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+            >
+              <span className="register-password-toggle__icon" aria-hidden="true">
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </span>
+              <span>{showPassword ? "Hide" : "Show"}</span>
+            </button>
+          )}
+        >
+          <Field
+            as="input"
+            id="password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            placeholder="Create your password"
+            autoComplete="new-password"
+            className="register-field"
+          />
+        </FormField>
+
         <div className="register-field-group register-field-group--full">
-          <div className="register-dynamic-slot" aria-live="polite">
+          <div
+            className={`register-dynamic-slot ${values.stream ? "is-ready" : ""} ${values.stream ? `register-dynamic-slot--${values.stream.toLowerCase()}` : ""}`}
+            aria-live="polite"
+          >
             {values.stream === "CA" && (
-              <div className="register-dynamic-grid">
-                <FormField
-                  label="ICAI SR Number"
-                  name="srno"
-                  helperText="Use 6-20 letters or numbers"
-                  required
-                >
+              <div className="register-dynamic-grid register-dynamic-pane">
+                <FormField label="ICAI SR Number" name="srno" required>
                   <Field
                     as="input"
                     id="srno"
@@ -251,8 +325,8 @@ const RegisterForm = ({ navigate }) => {
             )}
 
             {(values.stream === "Science" || values.stream === "Commerce") && (
-              <div className="register-dynamic-grid register-dynamic-grid--single">
-                <FormField label="Standard" name="standard" required>
+              <div className="register-dynamic-grid register-dynamic-grid--single register-dynamic-pane">
+                <FormField label="Standard" name="standard" required className="register-field-group--standard">
                   <Field
                     as="select"
                     id="standard"
@@ -272,50 +346,30 @@ const RegisterForm = ({ navigate }) => {
 
             {!values.stream && (
               <div className="register-dynamic-placeholder" role="status">
-                <Sparkles size={16} aria-hidden="true" />
-                Choose your stream to unlock stream-specific setup fields.
+                <span className="register-dynamic-placeholder__icon" aria-hidden="true">
+                  <Sparkles size={15} />
+                </span>
+
+                <div className="register-dynamic-placeholder__content">
+                  <p>Pick your stream to auto-show only relevant fields.</p>
+                  <div className="register-dynamic-placeholder__chips">
+                    <span>CA: SR No + Level</span>
+                    <span>Science / Commerce: Standard</span>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
-        </div>
-
-        <FormField
-          label="Password"
-          name="password"
-          icon={Lock}
-          helperText="Use uppercase, lowercase, number and symbol"
-          full
-          required
-        >
-          <Field
-            as="input"
-            id="password"
-            name="password"
-            type="password"
-            placeholder="Create a strong password"
-            autoComplete="new-password"
-            className="register-field"
-          />
-        </FormField>
-
-        <div className="register-field-group register-field-group--full">
-          <PasswordStrengthIndicator password={values.password} />
-          <div className="register-password-requirements">
-            {PASSWORD_REQUIREMENTS.map((req) => (
-              <div
-                key={req.label}
-                className={`register-password-requirement ${req.rule(values.password) ? "is-met" : ""}`}
-              >
-                <Check size={12} aria-hidden="true" />
-                <span>{req.label}</span>
-              </div>
-            ))}
           </div>
         </div>
       </div>
 
       <div className="register-actions">
-        <button type="submit" disabled={isSubmitting} className="register-submit-btn">
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="register-submit-btn"
+          aria-busy={isSubmitting}
+        >
           {isSubmitting && <span className="register-submit-btn__spinner" aria-hidden="true" />}
           <span>{isSubmitting ? "Creating account..." : "Create Account"}</span>
           {!isSubmitting && <ArrowRight size={16} aria-hidden="true" />}
@@ -344,33 +398,24 @@ const RegisterForm = ({ navigate }) => {
 
 const Register = () => {
   const navigate = useNavigate();
+  const [activeStoryStream, setActiveStoryStream] = useState("");
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [isStoryPaused, setIsStoryPaused] = useState(false);
   const login = useAuthStore((state) => state.login);
   const { pushToast } = useAppToast();
+  const storyProfile = STREAM_VISUAL_PROFILES[activeStoryStream] || STREAM_VISUAL_PROFILES.default;
 
   useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
+    if (isStoryPaused) {
+      return undefined;
+    }
 
-    const previousHtmlOverflow = html.style.overflow;
-    const previousBodyOverflow = body.style.overflow;
-    const previousHtmlHeight = html.style.height;
-    const previousBodyHeight = body.style.height;
-    const previousBodyOverscrollBehavior = body.style.overscrollBehavior;
+    const timerId = window.setInterval(() => {
+      setActiveSlideIndex((prev) => (prev + 1) % REGISTER_STORY_SLIDES.length);
+    }, 4500);
 
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    html.style.height = "100%";
-    body.style.height = "100%";
-    body.style.overscrollBehavior = "none";
-
-    return () => {
-      html.style.overflow = previousHtmlOverflow;
-      body.style.overflow = previousBodyOverflow;
-      html.style.height = previousHtmlHeight;
-      body.style.height = previousBodyHeight;
-      body.style.overscrollBehavior = previousBodyOverscrollBehavior;
-    };
-  }, []);
+    return () => window.clearInterval(timerId);
+  }, [isStoryPaused]);
 
   const validationSchema = Yup.object().shape({
     firstName: Yup.string()
@@ -452,43 +497,120 @@ const Register = () => {
 
   return (
     <div className="register-page">
-      <div className="register-page__orb register-page__orb--top" aria-hidden="true" />
-      <div className="register-page__orb register-page__orb--bottom" aria-hidden="true" />
+      <div className="register-page__ambient register-page__ambient--left" aria-hidden="true" />
+      <div className="register-page__ambient register-page__ambient--right" aria-hidden="true" />
 
       <main className="register-shell" aria-labelledby="register-title">
-        <section className="register-hero" aria-label="Student onboarding highlights">
-          <span className="register-hero__tag">Zebdoo Student Onboarding</span>
-          <h1 id="register-title">Start your focused learning journey today.</h1>
-          <p>
-            Build your profile in one quick screen, unlock your stream-specific plan,
-            and move straight into test prep momentum.
-          </p>
+        <aside
+          className={`register-story ${storyProfile.themeClass}`}
+          onMouseEnter={() => setIsStoryPaused(true)}
+          onMouseLeave={() => setIsStoryPaused(false)}
+          onFocusCapture={() => setIsStoryPaused(true)}
+          onBlurCapture={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              setIsStoryPaused(false);
+            }
+          }}
+        >
+          <div className="register-story__orb register-story__orb--warm" />
+          <div className="register-story__orb register-story__orb--mint" />
+          <div className="register-story__orb register-story__orb--sky" />
 
-          <ul className="register-hero__points" aria-label="Registration advantages">
-            <li>
-              <BookOpen size={15} aria-hidden="true" />
-              Stream-aligned setup from the first login.
-            </li>
-            <li>
-              <Sparkles size={15} aria-hidden="true" />
-              Cleaner onboarding flow with zero confusion.
-            </li>
-            <li>
-              <ShieldCheck size={15} aria-hidden="true" />
-              Secure account creation and instant sign-in.
-            </li>
-          </ul>
+          <div className="register-story__topbar">
+            <div className="register-story__badge">
+              <Sparkles size={14} aria-hidden="true" />
+              {storyProfile.badge}
+            </div>
 
-          <div className="register-hero__trust">
-            <CircleCheckBig size={15} aria-hidden="true" />
-            Trusted by students who want clarity before speed.
+            <p className="register-story__slide-index" aria-live="polite">
+              0{activeSlideIndex + 1} / 0{REGISTER_STORY_SLIDES.length}
+            </p>
           </div>
-        </section>
 
-        <section className="register-panel" aria-label="Registration form">
-          <header className="register-panel__header">
-            <h2>Create your account</h2>
-            <p>Everything you need is visible at once. No hidden steps.</p>
+          <div className="register-story__carousel" aria-label="Onboarding highlights" aria-live="polite">
+            {REGISTER_STORY_SLIDES.map((slide, index) => (
+              <article
+                key={slide.id}
+                className={`register-story__slide ${index === activeSlideIndex ? "is-active" : ""}`}
+                aria-hidden={index !== activeSlideIndex}
+              >
+                <figure className="register-story__media">
+                  <img src={slide.imageSrc} alt="" loading="lazy" />
+                  <figcaption>{slide.caption}</figcaption>
+                </figure>
+
+                <h2>{slide.title}</h2>
+                <p>{slide.description}</p>
+
+                <div className="register-story__chips" aria-hidden="true">
+                  {slide.chips.map((chip) => (
+                    <span key={chip}>{chip}</span>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="register-story__dots" role="tablist" aria-label="Story slides">
+            {REGISTER_STORY_SLIDES.map((slide, index) => (
+              <button
+                key={slide.id}
+                type="button"
+                role="tab"
+                className={`register-story__dot ${index === activeSlideIndex ? "is-active" : ""}`}
+                aria-selected={index === activeSlideIndex}
+                aria-label={`Go to slide ${index + 1}: ${slide.title}`}
+                onClick={() => setActiveSlideIndex(index)}
+              />
+            ))}
+          </div>
+
+          <div className="register-story__card">
+            <div className="register-story__avatar">
+              <GraduationCap size={22} aria-hidden="true" />
+            </div>
+            <div>
+              <strong>{storyProfile.spotlightTitle}</strong>
+              <span>{storyProfile.spotlightCopy}</span>
+            </div>
+          </div>
+
+          <div className="register-story__stats">
+            <span>
+              <BookOpen size={14} aria-hidden="true" />
+              {storyProfile.statPrimary}
+            </span>
+            <span>
+              <Clock3 size={14} aria-hidden="true" />
+              {storyProfile.statSecondary}
+            </span>
+          </div>
+        </aside>
+
+        <section className="register-content">
+          <header className="register-hero">
+            <div className="register-hero__copy">
+              <span className="register-hero__badge">Zebdoo Enrollment</span>
+              <h1 id="register-title">Create your account in one smooth step</h1>
+              <p>
+                Fast, secure, and focused onboarding built for students.
+              </p>
+            </div>
+
+            <div className="register-hero__pills" aria-label="Registration highlights">
+              <span>
+                <Clock3 size={14} aria-hidden="true" />
+                30 sec setup
+              </span>
+              <span>
+                <ShieldCheck size={14} aria-hidden="true" />
+                Secure sign up
+              </span>
+              <span>
+                <User size={14} aria-hidden="true" />
+                Personalized journey
+              </span>
+            </div>
           </header>
 
           <Formik
@@ -506,7 +628,7 @@ const Register = () => {
             validationSchema={validationSchema}
             onSubmit={handleSubmit}
           >
-            <RegisterForm navigate={navigate} />
+            <RegisterForm navigate={navigate} onStreamVisualChange={setActiveStoryStream} />
           </Formik>
         </section>
       </main>
