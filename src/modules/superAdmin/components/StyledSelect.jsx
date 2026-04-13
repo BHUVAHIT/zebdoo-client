@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
 
@@ -22,6 +22,7 @@ const StyledSelect = ({
 }) => {
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
+  const rafRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
   const [menuRect, setMenuRect] = useState(null);
 
@@ -33,68 +34,104 @@ const StyledSelect = ({
 
   const buttonLabel = selectedOption?.label || placeholder;
 
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+
+    const nextRect = trigger.getBoundingClientRect();
+    const viewportPadding = 12;
+    const maxWidth = Math.max(window.innerWidth - viewportPadding * 2, 220);
+    const width = Math.min(Math.max(nextRect.width, 180), maxWidth);
+    const spaceBelow = window.innerHeight - nextRect.bottom - viewportPadding;
+    const spaceAbove = nextRect.top - viewportPadding;
+    const prefersOpenUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(160, Math.min(320, (prefersOpenUp ? spaceAbove : spaceBelow) - 8));
+
+    const top = prefersOpenUp
+      ? Math.max(viewportPadding, nextRect.top - maxHeight - 8)
+      : nextRect.bottom + 8;
+    const left = Math.min(nextRect.left, window.innerWidth - width - viewportPadding);
+
+    setMenuRect((previous) => {
+      if (
+        previous &&
+        previous.top === top &&
+        previous.left === left &&
+        previous.width === width &&
+        previous.maxHeight === maxHeight
+      ) {
+        return previous;
+      }
+
+      return {
+        top,
+        left,
+        width,
+        maxHeight,
+      };
+    });
+  }, []);
+
+  const schedulePositionUpdate = useCallback(() => {
+    if (rafRef.current) {
+      return;
+    }
+
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null;
+      updatePosition();
+    });
+  }, [updatePosition]);
+
   useEffect(() => {
     if (!isOpen) {
       return undefined;
     }
 
-    const updatePosition = () => {
-      const trigger = triggerRef.current;
-      if (!trigger) {
-        return;
-      }
-
-      const nextRect = trigger.getBoundingClientRect();
-      const viewportPadding = 12;
-      const maxWidth = Math.max(window.innerWidth - viewportPadding * 2, 220);
-      const width = Math.min(Math.max(nextRect.width, 180), maxWidth);
-      const spaceBelow = window.innerHeight - nextRect.bottom - viewportPadding;
-      const spaceAbove = nextRect.top - viewportPadding;
-      const prefersOpenUp = spaceBelow < 200 && spaceAbove > spaceBelow;
-      const maxHeight = Math.max(160, Math.min(320, (prefersOpenUp ? spaceAbove : spaceBelow) - 8));
-
-      const top = prefersOpenUp
-        ? Math.max(viewportPadding, nextRect.top - maxHeight - 8)
-        : nextRect.bottom + 8;
-
-      setMenuRect({
-        top,
-        left: Math.min(nextRect.left, window.innerWidth - width - viewportPadding),
-        width,
-        maxHeight,
-      });
-    };
-
     const handlePointerDown = (event) => {
-      if (
-        triggerRef.current?.contains(event.target) ||
-        menuRef.current?.contains(event.target)
-      ) {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      if (!trigger || !menu) {
+        setMenuRect(null);
+        setIsOpen(false);
         return;
       }
 
+      if (trigger.contains(event.target) || menu.contains(event.target)) {
+        return;
+      }
+
+      setMenuRect(null);
       setIsOpen(false);
     };
 
     const handleEscape = (event) => {
       if (event.key === "Escape") {
+        setMenuRect(null);
         setIsOpen(false);
       }
     };
 
     updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", schedulePositionUpdate, { passive: true });
+    window.addEventListener("scroll", schedulePositionUpdate, true);
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleEscape);
 
     return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+
+      window.removeEventListener("resize", schedulePositionUpdate);
+      window.removeEventListener("scroll", schedulePositionUpdate, true);
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [isOpen]);
+  }, [isOpen, schedulePositionUpdate, updatePosition]);
 
   return (
     <div
@@ -111,7 +148,20 @@ const StyledSelect = ({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => !disabled && setIsOpen((previous) => !previous)}
+        onClick={() => {
+          if (disabled) {
+            return;
+          }
+
+          setIsOpen((previous) => {
+            const next = !previous;
+            if (!next) {
+              setMenuRect(null);
+            }
+
+            return next;
+          });
+        }}
         disabled={disabled}
         aria-expanded={isOpen}
         className={`sa-select__trigger ${isOpen ? "is-open" : ""}`.trim()}
@@ -151,6 +201,7 @@ const StyledSelect = ({
                     className={`sa-select__option ${isSelected ? "is-selected" : ""}`.trim()}
                     onClick={() => {
                       onChange(option.value);
+                      setMenuRect(null);
                       setIsOpen(false);
                     }}
                   >
@@ -169,4 +220,4 @@ const StyledSelect = ({
   );
 };
 
-export default StyledSelect;
+export default memo(StyledSelect);

@@ -1,7 +1,6 @@
 import { createPagedResult, withMockLatency, ApiError } from "../../../services/apiClient";
 import { APP_ENV } from "../../../config/env";
 import {
-  generateTemporaryPassword,
   hashPassword,
   normalizeEmail,
   validatePasswordStrength,
@@ -12,8 +11,6 @@ import { loadFromStorage } from "../../../utils/helpers";
 import { readCatalogDb, replaceCatalogDb } from "../../../store/catalogStore";
 import { generateUniqueSubjectCode } from "./subjectCodeGenerator";
 
-const DEFAULT_STUDENT_PASSWORD = "Student@123";
-const DEFAULT_STUDENT_PASSWORD_HASH = hashPassword(DEFAULT_STUDENT_PASSWORD);
 const LEGACY_ADMIN_PASSWORD_HASH = hashPassword("Admin@123");
 const SUPER_ADMIN_PASSWORD_HASH = hashPassword("SuperAdmin@123");
 
@@ -35,6 +32,7 @@ const toBoolean = (value, fallback = false) => {
 const stripStudentSecrets = (student) => {
   const {
     passwordHash,
+    passwordReset,
     ...rest
   } = student;
 
@@ -42,17 +40,21 @@ const stripStudentSecrets = (student) => {
     ...rest,
     hasPassword: Boolean(passwordHash),
     forcePasswordChange: Boolean(student.forcePasswordChange),
-    lastPasswordResetAt:
-      student.passwordReset?.requestedAt || student.passwordUpdatedAt || null,
+    lastPasswordResetAt: passwordReset?.requestedAt || student.passwordUpdatedAt || null,
   };
 };
 
 const normalizeStudent = (student = {}) => ({
   ...student,
+  ...ensureStudentIdentityPayload(student, {
+    requireAcademic: false,
+    requireMobile: false,
+    fallbackStream: "CA",
+  }),
   id: normalizeId(student.id),
   email: normalizeEmail(student.email),
   status: String(student.status || "ACTIVE").toUpperCase(),
-  passwordHash: String(student.passwordHash || DEFAULT_STUDENT_PASSWORD_HASH),
+  passwordHash: String(student.passwordHash || ""),
   forcePasswordChange: Boolean(student.forcePasswordChange),
   passwordReset: student.passwordReset || null,
   passwordUpdatedAt: student.passwordUpdatedAt || student.enrolledAt || new Date().toISOString(),
@@ -118,8 +120,20 @@ const SYSTEM_USERS = Object.freeze([
 
 const STUDENT_LEVELS = Object.freeze({
   FOUNDATION: "Foundation",
-  INTER: "Inter",
+  INTER: "Intermediate",
+  INTERMEDIATE: "Intermediate",
   FINAL: "Final",
+});
+
+const STUDENT_STREAMS = Object.freeze({
+  CA: "CA",
+  SCIENCE: "Science",
+  COMMERCE: "Commerce",
+});
+
+const STUDENT_STANDARDS = Object.freeze({
+  ELEVEN: "11",
+  TWELVE: "12",
 });
 
 const nextId = (prefix) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -129,29 +143,109 @@ const normalizeStudentLevel = (value) => {
   return STUDENT_LEVELS[normalized] || "";
 };
 
-const normalizeStudentName = (value) => String(value || "").trim();
+const normalizeStudentStream = (value) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "SCIENCE") return STUDENT_STREAMS.SCIENCE;
+  if (normalized === "COMMERCE") return STUDENT_STREAMS.COMMERCE;
+  if (normalized === "CA") return STUDENT_STREAMS.CA;
+  return "";
+};
+
+const normalizeStudentStandard = (value) => {
+  const normalized = String(value || "").trim();
+  if (normalized === STUDENT_STANDARDS.ELEVEN || normalized === STUDENT_STANDARDS.TWELVE) {
+    return normalized;
+  }
+
+  return "";
+};
+
+const normalizeStudentMobile = (value) => String(value || "").replace(/\D/g, "").slice(0, 10);
+
+const normalizeStudentName = (value) => String(value || "").replace(/\s+/g, " ").trim();
 const normalizeStudentSrNo = (value) => String(value || "").trim();
 
-const ensureStudentIdentityPayload = ({ name, srNo, level }) => {
-  const normalizedName = normalizeStudentName(name);
+const splitNameParts = (value) => {
+  const normalizedName = normalizeStudentName(value);
+  if (!normalizedName) {
+    return {
+      firstName: "",
+      lastName: "",
+    };
+  }
+
+  const [firstName, ...rest] = normalizedName.split(" ");
+  return {
+    firstName: firstName || "",
+    lastName: rest.join(" "),
+  };
+};
+
+const ensureStudentIdentityPayload = (
+  { name, firstName, lastName, srNo, srno, level, caLevel, stream, standard, mobile },
+  {
+    requireAcademic = true,
+    requireMobile = true,
+    fallbackStream = "",
+  } = {}
+) => {
+  const normalizedFirstName = normalizeStudentName(firstName);
+  const normalizedLastName = normalizeStudentName(lastName);
+  const fallbackParts = splitNameParts(name);
+
+  const resolvedFirstName = normalizedFirstName || fallbackParts.firstName;
+  const resolvedLastName = normalizedLastName || fallbackParts.lastName;
+  const normalizedName = normalizeStudentName(
+    [resolvedFirstName, resolvedLastName].filter(Boolean).join(" ") || name
+  );
+
   if (normalizedName.length < 2) {
     throw new ApiError("Student name is required.", 400, "NAME_REQUIRED");
   }
 
-  const normalizedSrNo = normalizeStudentSrNo(srNo);
-  if (!normalizedSrNo) {
-    throw new ApiError("ICAI SR No is required.", 400, "SRNO_REQUIRED");
+  const resolvedStream =
+    normalizeStudentStream(stream) ||
+    (normalizeStudentSrNo(srNo || srno) || normalizeStudentLevel(caLevel || level)
+      ? STUDENT_STREAMS.CA
+      : normalizeStudentStream(fallbackStream));
+
+  if (!resolvedStream) {
+    throw new ApiError("Stream must be CA, Science, or Commerce.", 400, "INVALID_STREAM");
   }
 
-  const normalizedLevel = normalizeStudentLevel(level);
-  if (!normalizedLevel) {
-    throw new ApiError("Level must be Foundation, Inter, or Final.", 400, "INVALID_LEVEL");
+  const normalizedMobile = normalizeStudentMobile(mobile);
+  if (requireMobile && !/^\d{10}$/.test(normalizedMobile)) {
+    throw new ApiError("Mobile number must be 10 digits.", 400, "INVALID_MOBILE");
+  }
+
+  const normalizedSrNo = normalizeStudentSrNo(srNo || srno);
+  const normalizedCaLevel = normalizeStudentLevel(caLevel || level);
+  const normalizedStandard = normalizeStudentStandard(standard);
+
+  if (resolvedStream === STUDENT_STREAMS.CA) {
+    if (requireAcademic && !normalizedSrNo) {
+      throw new ApiError("ICAI SR No is required for CA stream.", 400, "SRNO_REQUIRED");
+    }
+
+    if (requireAcademic && !normalizedCaLevel) {
+      throw new ApiError("CA Level must be Foundation, Intermediate, or Final.", 400, "INVALID_LEVEL");
+    }
+  }
+
+  if (resolvedStream !== STUDENT_STREAMS.CA && requireAcademic && !normalizedStandard) {
+    throw new ApiError("Standard must be 11 or 12 for Science/Commerce streams.", 400, "INVALID_STANDARD");
   }
 
   return {
     name: normalizedName,
-    srNo: normalizedSrNo,
-    level: normalizedLevel,
+    firstName: resolvedFirstName,
+    lastName: resolvedLastName,
+    stream: resolvedStream,
+    mobile: normalizedMobile,
+    srNo: resolvedStream === STUDENT_STREAMS.CA ? normalizedSrNo : "",
+    caLevel: resolvedStream === STUDENT_STREAMS.CA ? normalizedCaLevel : "",
+    level: resolvedStream === STUDENT_STREAMS.CA ? normalizedCaLevel : "",
+    standard: resolvedStream === STUDENT_STREAMS.CA ? "" : normalizedStandard,
   };
 };
 
@@ -398,7 +492,10 @@ export const superAdminService = {
             containsSearch(item.name, search) ||
             containsSearch(item.email, search) ||
             containsSearch(item.srNo, search) ||
-            containsSearch(item.level, search)
+            containsSearch(item.caLevel || item.level, search) ||
+            containsSearch(item.stream, search) ||
+            containsSearch(item.standard, search) ||
+            containsSearch(item.mobile, search)
         );
       }
 
@@ -410,10 +507,9 @@ export const superAdminService = {
 
   createStudent: (payload) =>
     withMutation((db) => {
-      const identity = ensureStudentIdentityPayload({
-        name: payload?.name,
-        srNo: payload?.srNo,
-        level: payload?.level,
+      const identity = ensureStudentIdentityPayload(payload, {
+        requireAcademic: true,
+        requireMobile: true,
       });
 
       const normalizedEmail = normalizeEmail(payload.email);
@@ -438,12 +534,18 @@ export const superAdminService = {
           {
             id: nextId("stu"),
             name: identity.name,
+            firstName: identity.firstName,
+            lastName: identity.lastName,
             email: normalizedEmail,
+            stream: identity.stream,
+            mobile: identity.mobile,
             srNo: identity.srNo,
+            caLevel: identity.caLevel,
             level: identity.level,
+            standard: identity.standard,
             status: normalizeStudentStatus(payload?.status),
             passwordHash: hashPassword(password),
-            forcePasswordChange: toBoolean(payload.forcePasswordChange, true),
+            forcePasswordChange: false,
             passwordReset: null,
             passwordUpdatedAt: new Date().toISOString(),
             enrolledAt: payload.enrolledAt || new Date().toISOString(),
@@ -485,19 +587,51 @@ export const superAdminService = {
       }
 
       const hasName = Object.prototype.hasOwnProperty.call(safePayload, "name");
+      const hasFirstName = Object.prototype.hasOwnProperty.call(safePayload, "firstName");
+      const hasLastName = Object.prototype.hasOwnProperty.call(safePayload, "lastName");
       const hasSrNo = Object.prototype.hasOwnProperty.call(safePayload, "srNo");
+      const hasLegacySrNo = Object.prototype.hasOwnProperty.call(safePayload, "srno");
       const hasLevel = Object.prototype.hasOwnProperty.call(safePayload, "level");
+      const hasCaLevel = Object.prototype.hasOwnProperty.call(safePayload, "caLevel");
+      const hasStream = Object.prototype.hasOwnProperty.call(safePayload, "stream");
+      const hasStandard = Object.prototype.hasOwnProperty.call(safePayload, "standard");
+      const hasMobile = Object.prototype.hasOwnProperty.call(safePayload, "mobile");
       const identityPatch =
-        hasName || hasSrNo || hasLevel
-          ? ensureStudentIdentityPayload({
-              name: hasName ? safePayload.name : currentStudent.name,
-              srNo: hasSrNo ? safePayload.srNo : currentStudent.srNo,
-              level: hasLevel ? safePayload.level : currentStudent.level,
-            })
+        hasName ||
+        hasFirstName ||
+        hasLastName ||
+        hasSrNo ||
+        hasLegacySrNo ||
+        hasLevel ||
+        hasCaLevel ||
+        hasStream ||
+        hasStandard ||
+        hasMobile
+          ? ensureStudentIdentityPayload(
+              {
+                ...currentStudent,
+                ...safePayload,
+                srNo: hasSrNo ? safePayload.srNo : currentStudent.srNo,
+                srno: hasLegacySrNo ? safePayload.srno : currentStudent.srNo,
+                level: hasLevel ? safePayload.level : currentStudent.level,
+                caLevel: hasCaLevel ? safePayload.caLevel : currentStudent.caLevel,
+              },
+              {
+                requireAcademic: true,
+                requireMobile: hasMobile || Boolean(normalizeStudentMobile(currentStudent.mobile)),
+                fallbackStream: currentStudent.stream,
+              }
+            )
           : {
               name: currentStudent.name,
+              firstName: currentStudent.firstName || splitNameParts(currentStudent.name).firstName,
+              lastName: currentStudent.lastName || splitNameParts(currentStudent.name).lastName,
+              stream: currentStudent.stream || STUDENT_STREAMS.CA,
+              mobile: normalizeStudentMobile(currentStudent.mobile),
               srNo: currentStudent.srNo,
+              caLevel: currentStudent.caLevel || currentStudent.level,
               level: currentStudent.level,
+              standard: currentStudent.standard || "",
             };
 
       const nextStudents = [...db.students];
@@ -505,8 +639,14 @@ export const superAdminService = {
         ...currentStudent,
         ...safePayload,
         name: identityPatch.name,
+        firstName: identityPatch.firstName,
+        lastName: identityPatch.lastName,
+        stream: identityPatch.stream,
+        mobile: identityPatch.mobile,
         srNo: identityPatch.srNo,
+        caLevel: identityPatch.caLevel,
         level: identityPatch.level,
+        standard: identityPatch.standard,
         status: Object.prototype.hasOwnProperty.call(safePayload, "status")
           ? normalizeStudentStatus(safePayload.status, currentStudent.status)
           : currentStudent.status,
@@ -541,10 +681,11 @@ export const superAdminService = {
         throw new ApiError("Student not found.", 404, "STUDENT_NOT_FOUND");
       }
 
-      const generatedTemporaryPassword = payload.generateTemporary
-        ? generateTemporaryPassword()
-        : null;
-      const nextPassword = String(payload.password || generatedTemporaryPassword || "");
+      const nextPassword = String(payload.password || "");
+      if (!nextPassword) {
+        throw new ApiError("Password is required.", 400, "PASSWORD_REQUIRED");
+      }
+
       const policy = validatePasswordStrength(nextPassword);
 
       if (!policy.isValid) {
@@ -583,17 +724,15 @@ export const superAdminService = {
         email: student.email,
         resetToken,
         resetTokenExpiresAt: expiresAt,
-        temporaryPassword: generatedTemporaryPassword,
       };
     }),
 
   registerStudent: async (payload) =>
     withMockLatency(() => {
       const db = getDb();
-      const identity = ensureStudentIdentityPayload({
-        name: payload?.name,
-        srNo: payload?.srno || payload?.srNo,
-        level: payload?.level,
+      const identity = ensureStudentIdentityPayload(payload, {
+        requireAcademic: true,
+        requireMobile: true,
       });
       const normalizedEmail = normalizeEmail(payload.email);
       const password = String(payload.password || "");
@@ -615,9 +754,15 @@ export const superAdminService = {
       const student = normalizeStudent({
         id: nextId("stu"),
         name: identity.name,
+        firstName: identity.firstName,
+        lastName: identity.lastName,
         email: normalizedEmail,
+        stream: identity.stream,
+        mobile: identity.mobile,
         srNo: identity.srNo,
+        caLevel: identity.caLevel,
         level: identity.level,
+        standard: identity.standard,
         status: "ACTIVE",
         passwordHash: hashPassword(password),
         forcePasswordChange: false,
@@ -636,8 +781,14 @@ export const superAdminService = {
         user: {
           id: student.id,
           name: student.name,
+          firstName: student.firstName,
+          lastName: student.lastName,
           email: student.email,
           role: "STUDENT",
+          stream: student.stream,
+          mobile: student.mobile,
+          standard: student.standard,
+          caLevel: student.caLevel,
           srno: student.srNo,
           level: student.level,
           forcePasswordChange: student.forcePasswordChange,
@@ -680,8 +831,14 @@ export const superAdminService = {
           user: {
             id: student.id,
             name: student.name,
+            firstName: student.firstName,
+            lastName: student.lastName,
             email: student.email,
             role: "STUDENT",
+            stream: student.stream,
+            mobile: student.mobile,
+            standard: student.standard,
+            caLevel: student.caLevel,
             srno: student.srNo,
             level: student.level,
             forcePasswordChange: Boolean(student.forcePasswordChange),

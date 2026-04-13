@@ -1,4 +1,4 @@
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { KeyRound, Pencil, Trash2 } from "lucide-react";
 
 const RowActions = ({ onEdit, onDelete, onResetPassword }) => (
   <div className="sa-row-actions">
@@ -22,7 +22,7 @@ const RowActions = ({ onEdit, onDelete, onResetPassword }) => (
         title="Reset password"
         aria-label="Reset password"
       >
-        <Eye size={14} className="h-4 w-4" />
+        <KeyRound size={14} className="h-4 w-4" />
         <span className="sa-row-actions__tooltip">
           Reset
         </span>

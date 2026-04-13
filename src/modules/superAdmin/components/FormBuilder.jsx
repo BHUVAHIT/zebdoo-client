@@ -68,6 +68,7 @@ const createFieldSchema = (field) => {
 };
 
 const FormBuilder = ({
+  className,
   fields,
   values,
   onChange,
@@ -82,7 +83,7 @@ const FormBuilder = ({
 
   const initialValues = useMemo(() => {
     return fields.reduce((accumulator, field) => {
-      if (field.type === "hidden") {
+      if (field.type === "hidden" || field.type === "section") {
         return accumulator;
       }
 
@@ -93,7 +94,7 @@ const FormBuilder = ({
 
   const validationSchema = useMemo(() => {
     const shape = fields.reduce((accumulator, field) => {
-      if (field.type === "hidden") {
+      if (field.type === "hidden" || field.type === "section") {
         return accumulator;
       }
 
@@ -114,8 +115,13 @@ const FormBuilder = ({
   });
 
   const handleFieldChange = (field, nextValue) => {
-    onChange(field.name, nextValue);
-    formik.setFieldValue(field.name, nextValue, false);
+    const computedValue =
+      typeof field.normalize === "function"
+        ? field.normalize(nextValue, formik.values)
+        : nextValue;
+
+    onChange(field.name, computedValue);
+    formik.setFieldValue(field.name, computedValue, false);
 
     if (formik.touched[field.name]) {
       formik.validateField(field.name);
@@ -155,7 +161,7 @@ const FormBuilder = ({
     setSubmitError("");
 
     const touchedState = fields.reduce((accumulator, field) => {
-      if (field.type === "hidden") {
+      if (field.type === "hidden" || field.type === "section") {
         return accumulator;
       }
 
@@ -180,10 +186,19 @@ const FormBuilder = ({
   };
 
   return (
-    <form className="sa-form" onSubmit={handleSubmit}>
+    <form className={`sa-form ${className || ""}`.trim()} onSubmit={handleSubmit}>
       {fields.map((field) => {
         if (field.type === "hidden") {
           return null;
+        }
+
+        if (field.type === "section") {
+          return (
+            <section key={field.name} className="sa-form-section sa-field--full">
+              <h4 className="sa-form-section__title">{field.title}</h4>
+              {field.description ? <p className="sa-form-section__description">{field.description}</p> : null}
+            </section>
+          );
         }
 
         const value = readFieldValue(field, values);
@@ -264,11 +279,16 @@ const FormBuilder = ({
               field.type === "number" ||
               field.type === "password") ? (
               <div className="sa-field__control">
+                {field.prefix ? <span className="sa-field__prefix">{field.prefix}</span> : null}
                 <input
                   id={inputId}
                   type={inputType}
                   value={value}
                   min={field.min}
+                  max={field.max}
+                  maxLength={field.maxLength}
+                  inputMode={field.inputMode}
+                  pattern={field.pattern}
                   onChange={(event) => handleFieldChange(field, event.target.value)}
                   onBlur={() => handleFieldBlur(field.name)}
                   placeholder={field.placeholder || ""}
@@ -276,11 +296,11 @@ const FormBuilder = ({
                   readOnly={field.readOnly}
                   aria-invalid={Boolean(errorMessage)}
                   aria-describedby={errorMessage ? errorId : undefined}
-                  autoComplete={isPassword ? "new-password" : undefined}
+                  autoComplete={field.autoComplete || (isPassword ? "new-password" : undefined)}
                   className={inputClassName}
                 />
 
-                {isPassword ? (
+                {isPassword && field.allowReveal !== false ? (
                   <button
                     type="button"
                     className="sa-field__toggle"
@@ -292,6 +312,8 @@ const FormBuilder = ({
                 ) : null}
               </div>
             ) : null}
+
+            {field.helperText ? <p className="sa-field__hint">{field.helperText}</p> : null}
 
             {errorMessage ? <p id={errorId} className="sa-field__error">{errorMessage}</p> : null}
           </label>
