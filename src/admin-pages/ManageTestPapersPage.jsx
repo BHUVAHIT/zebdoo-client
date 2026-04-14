@@ -74,6 +74,8 @@ const ManageTestPapersPage = () => {
   }, [filters]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
       loadRequestIdRef.current += 1;

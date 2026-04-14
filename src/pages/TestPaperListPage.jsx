@@ -184,6 +184,8 @@ const TestPaperListPage = () => {
   }, [chapterId, effectiveChapterId, effectiveMode, navigate, subjectId]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
       isMountedRef.current = false;
       loadRequestIdRef.current += 1;
