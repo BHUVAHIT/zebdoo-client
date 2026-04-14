@@ -25,6 +25,7 @@ export const ROUTES = Object.freeze({
   student: {
     dashboard: "/dashboard",
     profile: "/student/profile",
+    community: "/student/community",
     testPapersRoot: "/test-papers",
   },
   assessment: {
@@ -44,6 +45,9 @@ export const ROUTES = Object.freeze({
     testPapers: "/admin/test-papers",
     testPapersCreate: "/admin/test-papers/create",
     testPapersEdit: "/admin/test-papers/edit/:id",
+    community: "/admin/community",
+    communityAnnouncements: "/admin/community/announcements",
+    communityModeration: "/admin/community/moderation",
   },
   legacy: {
     testRoot: "/test",

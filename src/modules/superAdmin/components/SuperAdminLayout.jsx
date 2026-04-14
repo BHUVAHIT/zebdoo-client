@@ -15,6 +15,17 @@ const NAV_ITEMS = [
   { label: "Tests", shortLabel: "TE", to: ROUTES.admin.tests },
   { label: "Questions", shortLabel: "QU", to: ROUTES.admin.questions },
   { label: "Test Papers", shortLabel: "TP", to: ROUTES.admin.testPapers },
+  { label: "Community", shortLabel: "CO", to: ROUTES.admin.community },
+  {
+    label: "Announcements",
+    shortLabel: "AN",
+    to: ROUTES.admin.communityAnnouncements,
+  },
+  {
+    label: "Moderation",
+    shortLabel: "MO",
+    to: ROUTES.admin.communityModeration,
+  },
 ];
 
 const SuperAdminLayout = ({ children }) => {

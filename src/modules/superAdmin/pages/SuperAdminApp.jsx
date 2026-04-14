@@ -29,6 +29,15 @@ const QuestionsManagementPage = lazy(() =>
 );
 const ManageTestPapersPage = lazy(() => import("../../../admin-pages/ManageTestPapersPage"));
 const AddEditTestPaperForm = lazy(() => import("../../../admin-pages/AddEditTestPaperForm"));
+const AdminCommunityOverviewPage = lazy(() =>
+  import("../../community/pages/AdminCommunityOverviewPage")
+);
+const AdminCommunityAnnouncementsPage = lazy(() =>
+  import("../../community/pages/AdminCommunityAnnouncementsPage")
+);
+const AdminCommunityModerationPage = lazy(() =>
+  import("../../community/pages/AdminCommunityModerationPage")
+);
 
 const SuperAdminApp = () => {
   const [metricsLoading, setMetricsLoading] = useState(true);
@@ -112,6 +121,9 @@ const SuperAdminApp = () => {
           <Route path="test-papers" element={<ManageTestPapersPage />} />
           <Route path="test-papers/create" element={<AddEditTestPaperForm />} />
           <Route path="test-papers/edit/:id" element={<AddEditTestPaperForm />} />
+          <Route path="community" element={<AdminCommunityOverviewPage />} />
+          <Route path="community/announcements" element={<AdminCommunityAnnouncementsPage />} />
+          <Route path="community/moderation" element={<AdminCommunityModerationPage />} />
           <Route
             path="questions"
             element={<QuestionsManagementPage onDataChange={refreshMetrics} />}

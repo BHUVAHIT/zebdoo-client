@@ -11,6 +11,7 @@ import "./studentPortalLayout.css";
 
 const NAV_ITEMS = [
   { label: "Dashboard", to: ROUTES.student.dashboard },
+  { label: "Community", to: ROUTES.student.community },
   { label: "Assessment Session", to: routeBuilders.assessmentSession.root },
   { label: "Exam Vault", to: routeBuilders.testPapers.root },
   { label: "Assessment Results", to: ROUTES.assessment.result },
@@ -21,6 +22,7 @@ const SEGMENT_LABELS = {
   "test-papers": "Exam Vault",
   assessment: "Assessment",
   session: "Session",
+  community: "Community",
   result: "Result",
   chapters: "Chapters",
   "chapter-wise": "Chapter Wise",

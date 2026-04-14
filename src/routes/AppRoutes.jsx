@@ -28,6 +28,9 @@ const StudentDashboardPage = lazy(() =>
 const StudentProfilePage = lazy(() =>
   import("../modules/student/profile/pages/StudentProfilePage")
 );
+const StudentCommunityPage = lazy(() =>
+  import("../modules/community/pages/StudentCommunityPage")
+);
 const LoginPage = lazy(() => import("../modules/auth/pages/LoginPage"));
 const RegisterPage = lazy(() => import("../modules/auth/pages/RegisterPage"));
 const AssessmentSessionPage = lazy(() =>
@@ -164,6 +167,17 @@ const AppRoutes = () => {
           <StudentProtectedFrame>
             <Suspense fallback={<RouteLoadingScreen label="Loading student profile..." />}>
               <StudentProfilePage />
+            </Suspense>
+          </StudentProtectedFrame>
+        }
+      />
+
+      <Route
+        path={ROUTES.student.community}
+        element={
+          <StudentProtectedFrame>
+            <Suspense fallback={<RouteLoadingScreen label="Loading student community..." />}>
+              <StudentCommunityPage />
             </Suspense>
           </StudentProtectedFrame>
         }
