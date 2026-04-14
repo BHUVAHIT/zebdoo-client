@@ -36,9 +36,10 @@ const FilterBar = ({ filters, subjects = [], years = [], onChange, onReset }) =>
         </label>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <label className="space-y-2">
+          <label className="space-y-2" htmlFor="paper-filter-subject">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Subject</span>
             <select
+              id="paper-filter-subject"
               className="min-h-11 w-full rounded-xl border border-[#d1d5db] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-200 focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533]"
               value={filters.subjectId}
               onChange={(event) => onChange?.({ subjectId: event.target.value })}
@@ -52,9 +53,10 @@ const FilterBar = ({ filters, subjects = [], years = [], onChange, onReset }) =>
             </select>
           </label>
 
-          <label className="space-y-2">
+          <label className="space-y-2" htmlFor="paper-filter-mode">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Mode</span>
             <select
+              id="paper-filter-mode"
               className="min-h-11 w-full rounded-xl border border-[#d1d5db] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-200 focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533]"
               value={filters.scope}
               onChange={(event) => onChange?.({ scope: event.target.value })}
@@ -68,9 +70,10 @@ const FilterBar = ({ filters, subjects = [], years = [], onChange, onReset }) =>
             </select>
           </label>
 
-          <label className="space-y-2">
+          <label className="space-y-2" htmlFor="paper-filter-year">
             <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#64748b]">Year</span>
             <select
+              id="paper-filter-year"
               className="min-h-11 w-full rounded-xl border border-[#d1d5db] bg-white px-3 text-sm text-[#111827] outline-none transition-colors duration-200 focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533]"
               value={filters.year}
               onChange={(event) => onChange?.({ year: event.target.value })}

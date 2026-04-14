@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Layers3, Search } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
@@ -38,6 +38,8 @@ const TestPaperListPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { subjectId, mode, chapterId } = useParams();
+  const isMountedRef = useRef(true);
+  const loadRequestIdRef = useRef(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -105,6 +107,8 @@ const TestPaperListPage = () => {
   }, [searchInput]);
 
   const loadPapers = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
+
     if (!subjectId) {
       navigate(routeBuilders.testPapers.root, { replace: true });
       return;
@@ -129,6 +133,10 @@ const TestPaperListPage = () => {
         mode: effectiveMode,
         chapterId: effectiveChapterId,
       });
+
+      if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
+        return;
+      }
 
       const requestedChapterId =
         effectiveMode === TEST_PAPER_MODES.CHAPTER_WISE ? String(chapterId || "all") : null;
@@ -156,6 +164,10 @@ const TestPaperListPage = () => {
       setPapers(response.papers);
       setChapters(response.chapters);
     } catch (loadError) {
+      if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       const errorMessage = loadError?.message || "Unable to load papers.";
 
       if (/subject/i.test(errorMessage) && /not available/i.test(errorMessage)) {
@@ -165,9 +177,18 @@ const TestPaperListPage = () => {
 
       setError(errorMessage);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [chapterId, effectiveChapterId, effectiveMode, navigate, subjectId]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      loadRequestIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     loadPapers();

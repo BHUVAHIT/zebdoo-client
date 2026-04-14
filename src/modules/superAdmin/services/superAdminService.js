@@ -9,6 +9,8 @@ import {
 import { TEST_STORAGE_KEYS } from "../../../utils/constants";
 import { loadFromStorage } from "../../../utils/helpers";
 import { readCatalogDb, replaceCatalogDb } from "../../../store/catalogStore";
+import { useAuthStore } from "../../../store/authStore";
+import { normalizeRole, ROLES } from "../../../routes/routePaths";
 import { generateUniqueSubjectCode } from "./subjectCodeGenerator";
 
 const LEGACY_ADMIN_PASSWORD_HASH = hashPassword("Admin@123");
@@ -281,8 +283,21 @@ const paginate = (rows, page, pageSize) => {
   return rows.slice(offset, offset + pageSize);
 };
 
-const withMutation = async (mutator) =>
+const requireSuperAdminSession = () => {
+  const activeRole = normalizeRole(useAuthStore.getState().user?.role);
+  if (activeRole === ROLES.SUPER_ADMIN) {
+    return;
+  }
+
+  throw new ApiError("Only super admin can perform this action.", 403, "FORBIDDEN");
+};
+
+const withMutation = async (mutator, options = {}) =>
   withMockLatency(() => {
+    if (options.requireSuperAdmin !== false) {
+      requireSuperAdminSession();
+    }
+
     const db = getDb();
     const updated = normalizeDb(mutator(db));
     saveDb(updated);
@@ -291,6 +306,10 @@ const withMutation = async (mutator) =>
 
 const withList = async (resolver, options = {}) =>
   withMockLatency(() => {
+    if (options.requireSuperAdmin !== false) {
+      requireSuperAdminSession();
+    }
+
     const db = normalizeDb(getDb());
     return resolver(db);
   }, {
@@ -674,6 +693,8 @@ export const superAdminService = {
 
   resetStudentPassword: async (id, payload = {}) =>
     withMockLatency(() => {
+      requireSuperAdminSession();
+
       const db = getDb();
       const student = db.students.find((item) => sameId(item.id, id));
 
@@ -848,7 +869,7 @@ export const superAdminService = {
       }
 
       throw new ApiError("Invalid credentials.", 401, "INVALID_CREDENTIALS");
-    }),
+    }, { requireSuperAdmin: false }),
 
   listSubjects: (query, options = {}) =>
     withList((db) => {

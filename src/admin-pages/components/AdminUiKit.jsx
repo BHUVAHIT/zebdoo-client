@@ -62,8 +62,12 @@ const Label = ({ htmlFor, text, required = false }) => (
   </label>
 );
 
-const ErrorText = ({ error }) =>
-  error ? <p className="mt-2 text-xs font-semibold text-[#dc2626]">{error}</p> : null;
+const ErrorText = ({ id, error }) =>
+  error ? (
+    <p id={id} className="mt-2 text-xs font-semibold text-[#dc2626]" role="alert">
+      {error}
+    </p>
+  ) : null;
 
 export const InputField = ({
   id,
@@ -73,20 +77,26 @@ export const InputField = ({
   className,
   inputClassName,
   ...inputProps
-}) => (
-  <div className={cn("w-full", className)}>
-    <Label htmlFor={id} text={label} required={required} />
-    <input
-      id={id}
-      className={cn(
-        "w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-2.5 text-sm text-[#111827] shadow-sm outline-none transition-all duration-200 placeholder:text-[#9ca3af] focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533] disabled:cursor-not-allowed disabled:bg-[#f8fafc] disabled:text-[#94a3b8]",
-        inputClassName
-      )}
-      {...inputProps}
-    />
-    <ErrorText error={error} />
-  </div>
-);
+}) => {
+  const errorId = error && id ? `${id}-error` : undefined;
+
+  return (
+    <div className={cn("w-full", className)}>
+      <Label htmlFor={id} text={label} required={required} />
+      <input
+        id={id}
+        aria-invalid={Boolean(error)}
+        aria-describedby={errorId}
+        className={cn(
+          "w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-2.5 text-sm text-[#111827] shadow-sm outline-none transition-all duration-200 placeholder:text-[#9ca3af] focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533] disabled:cursor-not-allowed disabled:bg-[#f8fafc] disabled:text-[#94a3b8]",
+          inputClassName
+        )}
+        {...inputProps}
+      />
+      <ErrorText id={errorId} error={error} />
+    </div>
+  );
+};
 
 export const SelectField = ({
   id,
@@ -96,19 +106,25 @@ export const SelectField = ({
   className,
   children,
   ...selectProps
-}) => (
-  <div className={cn("w-full", className)}>
-    <Label htmlFor={id} text={label} required={required} />
-    <select
-      id={id}
-      className="w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-2.5 text-sm text-[#111827] shadow-sm outline-none transition-all duration-200 focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533] disabled:cursor-not-allowed disabled:bg-[#f8fafc] disabled:text-[#94a3b8]"
-      {...selectProps}
-    >
-      {children}
-    </select>
-    <ErrorText error={error} />
-  </div>
-);
+}) => {
+  const errorId = error && id ? `${id}-error` : undefined;
+
+  return (
+    <div className={cn("w-full", className)}>
+      <Label htmlFor={id} text={label} required={required} />
+      <select
+        id={id}
+        aria-invalid={Boolean(error)}
+        aria-describedby={errorId}
+        className="w-full rounded-lg border border-[#d1d5db] bg-white px-3 py-2.5 text-sm text-[#111827] shadow-sm outline-none transition-all duration-200 focus:border-[#4f46e5] focus:ring-4 focus:ring-[#4f46e533] disabled:cursor-not-allowed disabled:bg-[#f8fafc] disabled:text-[#94a3b8]"
+        {...selectProps}
+      >
+        {children}
+      </select>
+      <ErrorText id={errorId} error={error} />
+    </div>
+  );
+};
 
 export const ToggleTabs = ({ legend, name, value, options, onChange, segmented = false }) => (
   <fieldset className="space-y-2" aria-label={legend}>

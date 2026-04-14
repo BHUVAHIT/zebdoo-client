@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import {
   FileText,
   LoaderCircle,
@@ -20,10 +20,15 @@ const toFileSizeLabel = (sizeInBytes) => {
 
 const FileUploadCard = ({ value, disabled = false, onUploadFile, onUploaded, onClear }) => {
   const inputRef = useRef(null);
+  const inputId = useId();
   const [dragActive, setDragActive] = useState(false);
   const [status, setStatus] = useState(value?.url ? "success" : "idle");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
+  const maxUploadMb = Number(import.meta.env.VITE_TEST_PAPER_MAX_UPLOAD_MB) > 0
+    ? Number(import.meta.env.VITE_TEST_PAPER_MAX_UPLOAD_MB)
+    : 15;
+  const maxUploadBytes = Math.trunc(maxUploadMb * 1024 * 1024);
 
   const fileMeta = useMemo(() => {
     if (!value?.url) return null;
@@ -48,6 +53,12 @@ const FileUploadCard = ({ value, disabled = false, onUploadFile, onUploaded, onC
     if (!isPdf) {
       setStatus("error");
       setError("Only PDF files are allowed.");
+      return;
+    }
+
+    if (Number(nextFile.size || 0) > maxUploadBytes) {
+      setStatus("error");
+      setError(`PDF size must be ${maxUploadMb} MB or less.`);
       return;
     }
 
@@ -81,10 +92,12 @@ const FileUploadCard = ({ value, disabled = false, onUploadFile, onUploaded, onC
   return (
     <div className="space-y-3">
       <input
+        id={inputId}
         ref={inputRef}
         type="file"
         accept="application/pdf,.pdf"
         className="hidden"
+        aria-hidden="true"
         onChange={(event) => {
           const nextFile = event.target.files?.[0];
           handleUpload(nextFile);
@@ -95,6 +108,10 @@ const FileUploadCard = ({ value, disabled = false, onUploadFile, onUploaded, onC
       <div
         role="button"
         tabIndex={0}
+        aria-controls={inputId}
+        aria-disabled={disabled || status === "uploading"}
+        aria-busy={status === "uploading"}
+        aria-label="Upload test paper PDF"
         className={`group rounded-2xl border-2 border-dashed bg-gradient-to-br from-[#f8fafc] to-[#eef2ff] p-6 transition-all duration-300 ${
           dragActive
             ? "border-[#4f46e5] shadow-[0_18px_34px_-30px_rgba(79,70,229,0.75)]"
@@ -141,7 +158,7 @@ const FileUploadCard = ({ value, disabled = false, onUploadFile, onUploaded, onC
 
           <div>
             <p className="text-sm font-semibold text-[#111827]">Drag and drop PDF or click to upload</p>
-            <p className="mt-1 text-xs text-[#64748b]">Single PDF file only. Recommended size under 15 MB.</p>
+            <p className="mt-1 text-xs text-[#64748b]">Single PDF file only. Max size {maxUploadMb} MB.</p>
           </div>
         </div>
       </div>
@@ -197,8 +214,16 @@ const FileUploadCard = ({ value, disabled = false, onUploadFile, onUploaded, onC
         </div>
       ) : null}
 
-      {status === "success" ? <p className="text-xs font-semibold text-[#166534]">PDF uploaded successfully.</p> : null}
-      {error ? <p className="text-xs font-semibold text-[#dc2626]">{error}</p> : null}
+      {status === "success" ? (
+        <p className="text-xs font-semibold text-[#166534]" aria-live="polite">
+          PDF uploaded successfully.
+        </p>
+      ) : null}
+      {error ? (
+        <p className="text-xs font-semibold text-[#dc2626]" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 };

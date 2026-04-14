@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
 import FilterBar from "./components/FilterBar";
@@ -23,6 +23,8 @@ const PAGE_SIZE_OPTIONS = Object.freeze([10, 20, 50]);
 
 const ManageTestPapersPage = () => {
   const { pushToast } = useAppToast();
+  const isMountedRef = useRef(true);
+  const loadRequestIdRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
@@ -36,6 +38,7 @@ const ManageTestPapersPage = () => {
   });
 
   const loadData = useCallback(async () => {
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
     setError("");
 
@@ -51,14 +54,31 @@ const ManageTestPapersPage = () => {
         testPaperService.getFormOptions(),
       ]);
 
+      if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       setItems(papersResponse.items || []);
       setFormOptions({ subjects: optionsResponse.subjects || [] });
     } catch (loadError) {
+      if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       setError(loadError.message || "Unable to load test papers.");
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [filters]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      loadRequestIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     loadData();

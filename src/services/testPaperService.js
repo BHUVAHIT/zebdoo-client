@@ -24,6 +24,20 @@ const LATENCY_MAX_MS = 460;
 const UPLOAD_ENDPOINT = String(import.meta.env.VITE_TEST_PAPER_UPLOAD_ENDPOINT || "").trim();
 const MOCK_UPLOAD_FALLBACK_URL =
   "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+const DEFAULT_MAX_UPLOAD_MB = 15;
+const configuredMaxUploadMb = Number(import.meta.env.VITE_TEST_PAPER_MAX_UPLOAD_MB);
+const MAX_UPLOAD_MB =
+  Number.isFinite(configuredMaxUploadMb) && configuredMaxUploadMb > 0
+    ? configuredMaxUploadMb
+    : DEFAULT_MAX_UPLOAD_MB;
+const MAX_UPLOAD_BYTES = Math.trunc(MAX_UPLOAD_MB * 1024 * 1024);
+const PDF_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/x-pdf",
+  "applications/vnd.pdf",
+  "text/pdf",
+  "text/x-pdf",
+]);
 
 const randomLatency = () =>
   LATENCY_MIN_MS + Math.floor(Math.random() * (LATENCY_MAX_MS - LATENCY_MIN_MS + 1));
@@ -56,6 +70,27 @@ const normalizeUrl = (value) => normalizeText(value);
 
 const normalizePaperTypeValue = (paper) =>
   normalizePaperType(paper?.paperType || paper?.type);
+
+const isPdfFile = (file) => {
+  const normalizedType = String(file?.type || "").toLowerCase();
+  const normalizedName = String(file?.name || "").toLowerCase();
+
+  return PDF_MIME_TYPES.has(normalizedType) || normalizedName.endsWith(".pdf");
+};
+
+const validateUploadFile = (file) => {
+  if (typeof File !== "undefined" && !(file instanceof File)) {
+    throw new Error("Please select a valid PDF file.");
+  }
+
+  if (!isPdfFile(file)) {
+    throw new Error("Only PDF files are supported.");
+  }
+
+  if (Number(file.size || 0) > MAX_UPLOAD_BYTES) {
+    throw new Error(`PDF size must be ${MAX_UPLOAD_MB} MB or less.`);
+  }
+};
 
 const isValidHttpUrl = (value) => {
   try {
@@ -635,14 +670,7 @@ export const testPaperService = {
     }),
 
   uploadPaperFile: async (file, options = {}) => {
-    if (!(file instanceof File)) {
-      throw new Error("Please select a valid PDF file.");
-    }
-
-    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-    if (!isPdf) {
-      throw new Error("Only PDF files are supported.");
-    }
+    validateUploadFile(file);
 
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
 
