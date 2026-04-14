@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Bell, Flame, UsersRound } from "lucide-react";
 
 const CommunityInsightRail = ({
@@ -68,4 +69,4 @@ const CommunityInsightRail = ({
   );
 };
 
-export default CommunityInsightRail;
+export default memo(CommunityInsightRail);

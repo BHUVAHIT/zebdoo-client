@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { MessageSquareText, Megaphone, Trophy } from "lucide-react";
+import RenderProfiler from "../../../components/performance/RenderProfiler";
 import { useAppToast } from "../../../components/notifications/useAppToast";
 import useAuth from "../../../hooks/useAuth";
 import { COMMUNITY_TABS } from "../constants/community.constants";
@@ -144,17 +145,25 @@ const StudentCommunityPage = () => {
     [unreadAnnouncements]
   );
 
+  const messagePools = useMemo(
+    () =>
+      messageTree.map((message) => ({
+        message,
+        pool: [message, ...flattenTree(message.replies || [])],
+      })),
+    [messageTree]
+  );
+
   const filteredMessages = useMemo(() => {
-    const mapped = messageTree
-      .filter((message) => {
-        const descendants = flattenTree(message.replies || []);
-        const pool = [message, ...descendants];
+    const mapped = messagePools
+      .filter(({ message, pool }) => {
         const queryMatch = pool.some((item) => containsQuery(item, searchQuery));
         const topicMatch = pool.some((item) => containsTopic(item, selectedTopic));
         const bookmarkMatch = !showBookmarksOnly || pool.some((item) => item.isBookmarkedByCurrentUser);
 
         return queryMatch && topicMatch && bookmarkMatch && passesCurrentFilter({ message, feedFilter });
       })
+      .map(({ message }) => message)
       .map((message) => ({
         ...message,
         replies: (message.replies || []).filter((reply) => containsQuery(reply, searchQuery)),
@@ -169,9 +178,115 @@ const StudentCommunityPage = () => {
     }
 
     return mapped;
-  }, [feedFilter, messageTree, searchQuery, selectedTopic, showBookmarksOnly]);
+  }, [feedFilter, messagePools, searchQuery, selectedTopic, showBookmarksOnly]);
 
-  const postMessage = async ({ bodyMarkdown, tags }) => {
+  const handleSelectChannel = useCallback(
+    (channelId) => {
+      setSelectedChannel(channelId);
+    },
+    [setSelectedChannel]
+  );
+
+  const handleMarkAnnouncementRead = useCallback(
+    async (announcementId) => {
+      const result = await markAnnouncementRead({ actor: user, announcementId });
+      if (!result.ok) {
+        pushToast({
+          title: "Unable to mark as read",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [markAnnouncementRead, pushToast, user]
+  );
+
+  const handleBookmarkChat = useCallback(
+    async (messageId) => {
+      const result = await toggleBookmark({ actor: user, messageId });
+      if (!result.ok) {
+        pushToast({
+          title: "Unable to save post",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, toggleBookmark, user]
+  );
+
+  const handleReactChat = useCallback(
+    async (messageId, emoji) => {
+      const result = await toggleReaction({ actor: user, messageId, emoji });
+      if (!result.ok) {
+        pushToast({
+          title: "Reaction failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, toggleReaction, user]
+  );
+
+  const handleHelpfulChat = useCallback(
+    async (messageId) => {
+      const result = await toggleHelpful({ actor: user, messageId });
+      if (!result.ok) {
+        pushToast({
+          title: "Unable to update helpful",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, toggleHelpful, user]
+  );
+
+  const handleReportChat = useCallback(
+    async (messageId) => {
+      const reason = window.prompt("Report reason (minimum 8 characters)");
+      if (!reason) return;
+
+      const result = await reportMessage({ actor: user, messageId, reason });
+      if (result.ok) {
+        pushToast({
+          title: "Report submitted",
+          message: "Thanks for helping keep the community safe.",
+          tone: "success",
+        });
+        return;
+      }
+
+      pushToast({
+        title: "Unable to report",
+        message: result.error?.message || "Try again.",
+        tone: "warning",
+      });
+    },
+    [pushToast, reportMessage, user]
+  );
+
+  const handleBookmarkSaved = useCallback(
+    async (messageId) => {
+      const result = await toggleBookmark({ actor: user, messageId });
+      if (!result.ok) {
+        pushToast({
+          title: "Unable to update bookmark",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+      loadBookmarkedMessages({ actor: user, page: 1, pageSize: 20 });
+    },
+    [loadBookmarkedMessages, pushToast, toggleBookmark, user]
+  );
+
+  const handleOpenAnnouncements = useCallback(() => {
+    setActiveTab(COMMUNITY_TABS.ANNOUNCEMENTS);
+  }, [setActiveTab]);
+
+  const postMessage = useCallback(async ({ bodyMarkdown, tags }) => {
     if (!user || !selectedChannelId) return false;
 
     const result = await createMessage({
@@ -193,7 +308,7 @@ const StudentCommunityPage = () => {
 
     setSelectedThread(null);
     return true;
-  };
+  }, [createMessage, pushToast, replyTarget?.id, selectedChannelId, setSelectedThread, user]);
 
   return (
     <section className="community-shell">
@@ -233,31 +348,24 @@ const StudentCommunityPage = () => {
       ) : null}
 
       <div className="community-chat-grid community-workspace-grid">
-        <ChannelSidebar
-          channels={channels}
-          joinedGroups={STUDENT_JOINED_GROUPS}
-          selectedChannelId={selectedChannelId}
-          onSelect={(channelId) => {
-            setSelectedChannel(channelId);
-          }}
-        />
+        <RenderProfiler id="StudentCommunity.ChannelSidebar" thresholdMs={8}>
+          <ChannelSidebar
+            channels={channels}
+            joinedGroups={STUDENT_JOINED_GROUPS}
+            selectedChannelId={selectedChannelId}
+            onSelect={handleSelectChannel}
+          />
+        </RenderProfiler>
 
         <section className="community-chat-main">
           {activeTab === COMMUNITY_TABS.ANNOUNCEMENTS ? (
-            <AnnouncementFeed
-              announcements={announcements}
-              loading={loading.announcements || loading.bootstrap}
-              onMarkRead={async (announcementId) => {
-                const result = await markAnnouncementRead({ actor: user, announcementId });
-                if (!result.ok) {
-                  pushToast({
-                    title: "Unable to mark as read",
-                    message: result.error?.message || "Try again.",
-                    tone: "warning",
-                  });
-                }
-              }}
-            />
+            <RenderProfiler id="StudentCommunity.AnnouncementFeed" thresholdMs={10}>
+              <AnnouncementFeed
+                announcements={announcements}
+                loading={loading.announcements || loading.bootstrap}
+                onMarkRead={handleMarkAnnouncementRead}
+              />
+            </RenderProfiler>
           ) : null}
 
           {activeTab === COMMUNITY_TABS.CHAT ? (
@@ -280,62 +388,18 @@ const StudentCommunityPage = () => {
                 {selectedChannel?.isReadOnly ? <strong>This channel is currently read-only.</strong> : null}
               </header>
 
-              <MessageThreadList
-                loading={loading.messages || loading.bootstrap}
-                messages={filteredMessages}
-                onReply={(message) => setSelectedThread(message.id)}
-                onBookmark={async (messageId) => {
-                  const result = await toggleBookmark({ actor: user, messageId });
-                  if (!result.ok) {
-                    pushToast({
-                      title: "Unable to save post",
-                      message: result.error?.message || "Try again.",
-                      tone: "warning",
-                    });
-                  }
-                }}
-                onReact={async (messageId, emoji) => {
-                  const result = await toggleReaction({ actor: user, messageId, emoji });
-                  if (!result.ok) {
-                    pushToast({
-                      title: "Reaction failed",
-                      message: result.error?.message || "Try again.",
-                      tone: "warning",
-                    });
-                  }
-                }}
-                onHelpful={async (messageId) => {
-                  const result = await toggleHelpful({ actor: user, messageId });
-                  if (!result.ok) {
-                    pushToast({
-                      title: "Unable to update helpful",
-                      message: result.error?.message || "Try again.",
-                      tone: "warning",
-                    });
-                  }
-                }}
-                onReport={async (messageId) => {
-                  const reason = window.prompt("Report reason (minimum 8 characters)");
-                  if (!reason) return;
-
-                  const result = await reportMessage({ actor: user, messageId, reason });
-                  if (result.ok) {
-                    pushToast({
-                      title: "Report submitted",
-                      message: "Thanks for helping keep the community safe.",
-                      tone: "success",
-                    });
-                    return;
-                  }
-
-                  pushToast({
-                    title: "Unable to report",
-                    message: result.error?.message || "Try again.",
-                    tone: "warning",
-                  });
-                }}
-                onModerate={() => {}}
-              />
+              <RenderProfiler id="StudentCommunity.ChatThreadList" thresholdMs={12}>
+                <MessageThreadList
+                  loading={loading.messages || loading.bootstrap}
+                  messages={filteredMessages}
+                  onReply={(message) => setSelectedThread(message.id)}
+                  onBookmark={handleBookmarkChat}
+                  onReact={handleReactChat}
+                  onHelpful={handleHelpfulChat}
+                  onReport={handleReportChat}
+                  onModerate={() => {}}
+                />
+              </RenderProfiler>
 
               <MessageComposer
                 disabled={!selectedChannel || !selectedChannel.isEnabled || selectedChannel.isReadOnly}
@@ -357,17 +421,7 @@ const StudentCommunityPage = () => {
                 loading={loading.bookmarks}
                 messages={bookmarkedMessages}
                 onReply={() => {}}
-                onBookmark={async (messageId) => {
-                  const result = await toggleBookmark({ actor: user, messageId });
-                  if (!result.ok) {
-                    pushToast({
-                      title: "Unable to update bookmark",
-                      message: result.error?.message || "Try again.",
-                      tone: "warning",
-                    });
-                  }
-                  loadBookmarkedMessages({ actor: user, page: 1, pageSize: 20 });
-                }}
+                onBookmark={handleBookmarkSaved}
                 onReact={async (messageId, emoji) => {
                   await toggleReaction({ actor: user, messageId, emoji });
                 }}
@@ -385,12 +439,14 @@ const StudentCommunityPage = () => {
           ) : null}
         </section>
 
-        <CommunityInsightRail
-          activeUsers={activeUsers.slice(0, 6)}
-          trendingTopics={trendingTopics.slice(0, 6)}
-          announcements={announcementPreview}
-          onOpenAnnouncements={() => setActiveTab(COMMUNITY_TABS.ANNOUNCEMENTS)}
-        />
+        <RenderProfiler id="StudentCommunity.InsightRail" thresholdMs={8}>
+          <CommunityInsightRail
+            activeUsers={activeUsers.slice(0, 6)}
+            trendingTopics={trendingTopics.slice(0, 6)}
+            announcements={announcementPreview}
+            onOpenAnnouncements={handleOpenAnnouncements}
+          />
+        </RenderProfiler>
       </div>
     </section>
   );

@@ -15,6 +15,7 @@ import {
   normalizePaperType,
 } from "../constants/paperTypes";
 import { infrastructureApiClient } from "../infrastructure/apiClient";
+import { withMockLatency } from "./apiClient";
 
 const STORAGE_KEY = "zebdoo:test-papers:v1";
 const STORAGE_SYNC_KEY = "zebdoo:test-papers:sync:v1";
@@ -39,17 +40,49 @@ const PDF_MIME_TYPES = new Set([
   "text/x-pdf",
 ]);
 
-const randomLatency = () =>
-  LATENCY_MIN_MS + Math.floor(Math.random() * (LATENCY_MAX_MS - LATENCY_MIN_MS + 1));
-
-const delay = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
-const withNetwork = async (resolver) => {
-  await delay(randomLatency());
-  return JSON.parse(JSON.stringify(resolver()));
+const createAbortError = () => {
+  const error = new Error("Request aborted.");
+  error.name = "AbortError";
+  return error;
 };
 
-const clone = (value) => JSON.parse(JSON.stringify(value));
+const throwIfAborted = (signal) => {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+};
+
+const delay = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError());
+    };
+
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", onAbort);
+    };
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+
+const withNetwork = async (resolver, options = {}) =>
+  withMockLatency(resolver, {
+    minMs: LATENCY_MIN_MS,
+    maxMs: LATENCY_MAX_MS,
+    signal: options.signal,
+  });
 
 const normalizeText = (value) => String(value || "").trim();
 
@@ -268,7 +301,7 @@ const ensureSeed = () => {
     return sanitized;
   }
 
-  const seeded = sanitizePaperDb(clone(testPapersSeedData));
+  const seeded = sanitizePaperDb(testPapersSeedData);
   writeDb(seeded, { notify: false });
   return seeded;
 };
@@ -410,24 +443,26 @@ const validateAndNormalizePayload = (payload, { allowPartial = false } = {}) => 
 };
 
 export const testPaperService = {
-  getAll: async (filters = {}) => {
-    const response = await testPaperService.listPapersForAdmin(filters);
+  getAll: async (filters = {}, options = {}) => {
+    const response = await testPaperService.listPapersForAdmin(filters, options);
     return response.items || [];
   },
 
-  getById: async (paperId) => testPaperService.getPaperByIdForAdmin(paperId),
+  getById: async (paperId, options = {}) =>
+    testPaperService.getPaperByIdForAdmin(paperId, options),
 
-  create: async (payload) => testPaperService.createPaper(payload),
+  create: async (payload, options = {}) => testPaperService.createPaper(payload, options),
 
-  update: async (paperId, payload) => testPaperService.updatePaper(paperId, payload),
+  update: async (paperId, payload, options = {}) =>
+    testPaperService.updatePaper(paperId, payload, options),
 
-  delete: async (paperId) => testPaperService.deletePaper(paperId),
+  delete: async (paperId, options = {}) => testPaperService.deletePaper(paperId, options),
 
-  getModeOptions: async () => withNetwork(() => TEST_PAPER_SCOPE_OPTIONS),
+  getModeOptions: async (options = {}) => withNetwork(() => TEST_PAPER_SCOPE_OPTIONS, options),
 
-  getTypeOptions: async () => withNetwork(() => TEST_PAPER_TYPE_OPTIONS),
+  getTypeOptions: async (options = {}) => withNetwork(() => TEST_PAPER_TYPE_OPTIONS, options),
 
-  getSubjectsForStudent: async () =>
+  getSubjectsForStudent: async (options = {}) =>
     withNetwork(() => {
       const papers = readDb();
       const subjects = getSubjectRecords();
@@ -443,9 +478,9 @@ export const testPaperService = {
           };
         })
         .sort((left, right) => left.name.localeCompare(right.name));
-    }),
+    }, options),
 
-  getSubjectContext: async (subjectId) =>
+  getSubjectContext: async (subjectId, options = {}) =>
     withNetwork(() => {
       const normalizedSubjectId = normalizeText(subjectId);
       const subjectMap = getSubjectMap();
@@ -460,9 +495,9 @@ export const testPaperService = {
         subject,
         chapters,
       };
-    }),
+    }, options),
 
-  getPapersForStudent: async ({ subjectId, mode, chapterId } = {}) =>
+  getPapersForStudent: async ({ subjectId, mode, chapterId } = {}, options = {}) =>
     withNetwork(() => {
       const normalizedSubjectId = normalizeText(subjectId);
       const normalizedMode = normalizeMode(mode);
@@ -503,9 +538,9 @@ export const testPaperService = {
         mode: normalizedMode,
         papers,
       };
-    }),
+    }, options),
 
-  getFormOptions: async () =>
+  getFormOptions: async (options = {}) =>
     withNetwork(() => {
       const subjects = getSubjectRecords().map((subject) => ({
         value: subject.id,
@@ -526,18 +561,18 @@ export const testPaperService = {
         types: TEST_PAPER_TYPE_OPTIONS,
         scopes: TEST_PAPER_SCOPE_OPTIONS,
       };
-    }),
+    }, options),
 
-  getPaperByIdForAdmin: async (paperId) =>
+  getPaperByIdForAdmin: async (paperId, options = {}) =>
     withNetwork(() => {
       const item = readDb().find((paper) => paper.id === String(paperId));
       if (!item) {
         throw new Error("Paper not found.");
       }
       return item;
-    }),
+    }, options),
 
-  listPapersForAdmin: async (filters = {}) =>
+  listPapersForAdmin: async (filters = {}, options = {}) =>
     withNetwork(() => {
       const search = normalizeText(filters.search).toLowerCase();
       const subjectId = normalizeText(filters.subjectId);
@@ -584,9 +619,9 @@ export const testPaperService = {
         items: papers,
         total: papers.length,
       };
-    }),
+    }, options),
 
-  createPaper: async (payload) =>
+  createPaper: async (payload, options = {}) =>
     withNetwork(() => {
       const normalized = validateAndNormalizePayload(payload);
 
@@ -616,9 +651,9 @@ export const testPaperService = {
       writeDb(db);
 
       return next;
-    }),
+    }, options),
 
-  updatePaper: async (paperId, payload) =>
+  updatePaper: async (paperId, payload, options = {}) =>
     withNetwork(() => {
       const id = String(paperId);
       const db = readDb();
@@ -651,9 +686,9 @@ export const testPaperService = {
 
       writeDb(db);
       return db[index];
-    }),
+    }, options),
 
-  deletePaper: async (paperId) =>
+  deletePaper: async (paperId, options = {}) =>
     withNetwork(() => {
       const id = String(paperId);
       const db = readDb();
@@ -667,12 +702,15 @@ export const testPaperService = {
       return {
         success: true,
       };
-    }),
+    }, options),
 
   uploadPaperFile: async (file, options = {}) => {
     validateUploadFile(file);
 
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+    const signal = options.signal;
+
+    throwIfAborted(signal);
 
     if (UPLOAD_ENDPOINT) {
       const formData = new FormData();
@@ -688,6 +726,7 @@ export const testPaperService = {
             const progress = Math.min(Math.round((event.loaded * 100) / event.total), 100);
             onProgress(progress);
           },
+          signal,
         });
 
         const uploadedUrl = normalizeUrl(
@@ -711,13 +750,16 @@ export const testPaperService = {
           provider: "backend",
         };
       } catch (uploadError) {
+        if (uploadError?.name === "AbortError") {
+          throw uploadError;
+        }
         throw new Error(uploadError?.message || "PDF upload failed. Please try again.");
       }
     }
 
     const checkpoints = [14, 32, 48, 67, 82, 96, 100];
     for (const checkpoint of checkpoints) {
-      await delay(90);
+      await delay(90, signal);
       onProgress?.(checkpoint);
     }
 
@@ -738,10 +780,28 @@ export const testPaperService = {
       return () => {};
     }
 
-    const handleCustomEvent = () => callback();
+    let notifyScheduled = false;
+    const notify = () => {
+      if (notifyScheduled) return;
+      notifyScheduled = true;
+
+      const flush = () => {
+        notifyScheduled = false;
+        callback();
+      };
+
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(flush);
+        return;
+      }
+
+      window.setTimeout(flush, 0);
+    };
+
+    const handleCustomEvent = () => notify();
     const handleStorageEvent = (event) => {
       if (event.key === STORAGE_SYNC_KEY) {
-        callback();
+        notify();
       }
     };
 
@@ -750,7 +810,7 @@ export const testPaperService = {
         return;
       }
 
-      callback();
+      notify();
     });
 
     window.addEventListener(CHANGE_EVENT_NAME, handleCustomEvent);

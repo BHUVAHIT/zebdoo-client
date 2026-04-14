@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Search } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
@@ -12,34 +12,81 @@ import "./testPapers.css";
 
 const TestPaperSubjectsPage = () => {
   const navigate = useNavigate();
+  const isMountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  const activeRequestRef = useRef(null);
+  const syncReloadTimeoutRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [subjects, setSubjects] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadSubjects = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+
     setLoading(true);
     setError("");
 
     try {
-      const response = await testPaperService.getSubjectsForStudent();
+      const response = await testPaperService.getSubjectsForStudent({
+        signal: controller.signal,
+      });
+
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
+        return;
+      }
+
       setSubjects(response);
     } catch (loadError) {
+      if (loadError?.name === "AbortError") {
+        return;
+      }
+
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
+        return;
+      }
+
       setError(loadError.message || "Unable to load subjects right now.");
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestIdRef.current === requestId) {
+        setLoading(false);
+      }
+
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadSubjects();
 
     const unsubscribe = testPaperService.subscribeToChanges(() => {
-      loadSubjects();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+      }
+
+      syncReloadTimeoutRef.current = window.setTimeout(() => {
+        syncReloadTimeoutRef.current = null;
+        loadSubjects();
+      }, 60);
     });
 
     return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
       unsubscribe?.();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+        syncReloadTimeoutRef.current = null;
+      }
     };
   }, [loadSubjects]);
 

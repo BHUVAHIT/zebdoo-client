@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Shield } from "lucide-react";
+import RenderProfiler from "../../../components/performance/RenderProfiler";
 import { useAppToast } from "../../../components/notifications/useAppToast";
 import useAuth from "../../../hooks/useAuth";
 import ChannelSidebar from "../components/ChannelSidebar";
@@ -57,10 +58,18 @@ const AdminCommunityModerationPage = () => {
     updateChannel,
   } = useCommunityStore();
 
+  const messagePools = useMemo(
+    () =>
+      messageTree.map((message) => ({
+        message,
+        pool: [message, ...flattenTree(message.replies || [])],
+      })),
+    [messageTree]
+  );
+
   const visibleMessages = useMemo(() => {
-    const rows = [...messageTree];
-    const filtered = rows.filter((message) => {
-      const pool = [message, ...flattenTree(message.replies || [])];
+    const filtered = messagePools
+      .filter(({ message, pool }) => {
 
       const byQuery =
         !searchQuery ||
@@ -78,7 +87,8 @@ const AdminCommunityModerationPage = () => {
       }
 
       return byQuery && byTopic;
-    });
+      })
+      .map(({ message }) => message);
 
     if (feedFilter === "POPULAR") {
       return filtered.sort((a, b) => {
@@ -93,7 +103,148 @@ const AdminCommunityModerationPage = () => {
     }
 
     return filtered;
-  }, [feedFilter, messageTree, searchQuery, selectedTopic]);
+  }, [feedFilter, messagePools, searchQuery, selectedTopic]);
+
+  const handleToggleChannelEnabled = useCallback(
+    async (channel) => {
+      const result = await updateChannel({
+        actor: user,
+        channelId: channel.id,
+        patch: { isEnabled: !channel.isEnabled },
+      });
+
+      if (!result.ok) {
+        pushToast({
+          title: "Channel update failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, updateChannel, user]
+  );
+
+  const handleToggleChannelReadOnly = useCallback(
+    async (channel) => {
+      const result = await updateChannel({
+        actor: user,
+        channelId: channel.id,
+        patch: { isReadOnly: !channel.isReadOnly },
+      });
+
+      if (!result.ok) {
+        pushToast({
+          title: "Channel update failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, updateChannel, user]
+  );
+
+  const handleModerateMessage = useCallback(
+    async (messageId, action) => {
+      const result = await moderateMessage({ actor: user, messageId, action });
+      if (!result.ok) {
+        pushToast({
+          title: "Moderation failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [moderateMessage, pushToast, user]
+  );
+
+  const handleWarnUser = useCallback(
+    async (message) => {
+      const reason = window.prompt("Warning reason (minimum 5 characters)");
+      if (!reason) return;
+
+      const result = await warnUser({
+        actor: user,
+        targetUserId: message.author?.id,
+        reason,
+        messageId: message.id,
+      });
+
+      if (!result.ok) {
+        pushToast({
+          title: "Warning failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+        return;
+      }
+
+      pushToast({
+        title: "Warning issued",
+        message: `Warning issued to ${message.author?.name || "user"}.`,
+        tone: "success",
+      });
+    },
+    [pushToast, user, warnUser]
+  );
+
+  const handleToggleUserBan = useCallback(
+    async (message) => {
+      const reason = window.prompt("Ban/unban reason");
+      const result = await toggleUserBan({
+        actor: user,
+        targetUserId: message.author?.id,
+        reason,
+      });
+
+      if (!result.ok) {
+        pushToast({
+          title: "Member access update failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+        return;
+      }
+
+      pushToast({
+        title: result.banned ? "Member banned" : "Member unbanned",
+        message: `${message.author?.name || "User"} access updated successfully.`,
+        tone: "success",
+      });
+    },
+    [pushToast, toggleUserBan, user]
+  );
+
+  const handleHideReportedMessage = useCallback(
+    async (messageId) => {
+      const result = await moderateMessage({ actor: user, messageId, action: "hide" });
+      if (!result.ok) {
+        pushToast({
+          title: "Update failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [moderateMessage, pushToast, user]
+  );
+
+  const handleReportStatusChange = useCallback(
+    async (reportId, status) => {
+      const result = await updateReportStatus({
+        actor: user,
+        reportId,
+        status,
+      });
+      if (!result.ok) {
+        pushToast({
+          title: "Update failed",
+          message: result.error?.message || "Try again.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, updateReportStatus, user]
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -142,42 +293,16 @@ const AdminCommunityModerationPage = () => {
       ) : null}
 
       <div className="community-chat-grid admin-layout">
-        <ChannelSidebar
-          channels={channels}
-          selectedChannelId={selectedChannelId}
-          onSelect={setSelectedChannel}
-          showAdminControls
-          onToggleEnabled={async (channel) => {
-            const result = await updateChannel({
-              actor: user,
-              channelId: channel.id,
-              patch: { isEnabled: !channel.isEnabled },
-            });
-
-            if (!result.ok) {
-              pushToast({
-                title: "Channel update failed",
-                message: result.error?.message || "Try again.",
-                tone: "warning",
-              });
-            }
-          }}
-          onToggleReadOnly={async (channel) => {
-            const result = await updateChannel({
-              actor: user,
-              channelId: channel.id,
-              patch: { isReadOnly: !channel.isReadOnly },
-            });
-
-            if (!result.ok) {
-              pushToast({
-                title: "Channel update failed",
-                message: result.error?.message || "Try again.",
-                tone: "warning",
-              });
-            }
-          }}
-        />
+        <RenderProfiler id="AdminCommunityModeration.ChannelSidebar" thresholdMs={9}>
+          <ChannelSidebar
+            channels={channels}
+            selectedChannelId={selectedChannelId}
+            onSelect={setSelectedChannel}
+            showAdminControls
+            onToggleEnabled={handleToggleChannelEnabled}
+            onToggleReadOnly={handleToggleChannelReadOnly}
+          />
+        </RenderProfiler>
 
         <section className="community-chat-main">
           <CommunityFeedToolbar
@@ -202,78 +327,25 @@ const AdminCommunityModerationPage = () => {
             </strong>
           </header>
 
-          <MessageThreadList
-            loading={loading.messages || loading.bootstrap}
-            messages={visibleMessages}
-            canModerate
-            onReply={() => {}}
-            onReact={() => {}}
-            onHelpful={() => {}}
-            onReport={() => {}}
-            onBookmark={() => {}}
-            onModerate={async (messageId, action) => {
-              const result = await moderateMessage({ actor: user, messageId, action });
-              if (!result.ok) {
-                pushToast({
-                  title: "Moderation failed",
-                  message: result.error?.message || "Try again.",
-                  tone: "warning",
-                });
-              }
-            }}
-            onWarnUser={async (message) => {
-              const reason = window.prompt("Warning reason (minimum 5 characters)");
-              if (!reason) return;
-
-              const result = await warnUser({
-                actor: user,
-                targetUserId: message.author?.id,
-                reason,
-                messageId: message.id,
-              });
-
-              if (!result.ok) {
-                pushToast({
-                  title: "Warning failed",
-                  message: result.error?.message || "Try again.",
-                  tone: "warning",
-                });
-                return;
-              }
-
-              pushToast({
-                title: "Warning issued",
-                message: `Warning issued to ${message.author?.name || "user"}.`,
-                tone: "success",
-              });
-            }}
-            onBanUser={async (message) => {
-              const reason = window.prompt("Ban/unban reason");
-              const result = await toggleUserBan({
-                actor: user,
-                targetUserId: message.author?.id,
-                reason,
-              });
-
-              if (!result.ok) {
-                pushToast({
-                  title: "Member access update failed",
-                  message: result.error?.message || "Try again.",
-                  tone: "warning",
-                });
-                return;
-              }
-
-              pushToast({
-                title: result.banned ? "Member banned" : "Member unbanned",
-                message: `${message.author?.name || "User"} access updated successfully.`,
-                tone: "success",
-              });
-            }}
-          />
+          <RenderProfiler id="AdminCommunityModeration.MessageThreadList" thresholdMs={12}>
+            <MessageThreadList
+              loading={loading.messages || loading.bootstrap}
+              messages={visibleMessages}
+              canModerate
+              onReply={() => {}}
+              onReact={() => {}}
+              onHelpful={() => {}}
+              onReport={() => {}}
+              onBookmark={() => {}}
+              onModerate={handleModerateMessage}
+              onWarnUser={handleWarnUser}
+              onBanUser={handleToggleUserBan}
+            />
+          </RenderProfiler>
         </section>
 
-        <section className="community-card community-reports-panel">
+        <RenderProfiler id="AdminCommunityModeration.ReportsPanel" thresholdMs={11}>
+          <section className="community-card community-reports-panel">
           <header>
             <h3>Reported messages</h3>
             <div className="community-report-filters">
@@ -307,7 +379,7 @@ const AdminCommunityModerationPage = () => {
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() => moderateMessage({ actor: user, messageId: report.messageId, action: "hide" })}
+                    onClick={() => handleHideReportedMessage(report.messageId)}
                   >
                     Hide message
                   </button>
@@ -316,40 +388,18 @@ const AdminCommunityModerationPage = () => {
                       <button
                         type="button"
                         className="btn-primary"
-                        onClick={async () => {
-                          const result = await updateReportStatus({
-                            actor: user,
-                            reportId: report.id,
-                            status: REPORT_STATUS.RESOLVED,
-                          });
-                          if (!result.ok) {
-                            pushToast({
-                              title: "Update failed",
-                              message: result.error?.message || "Try again.",
-                              tone: "warning",
-                            });
-                          }
-                        }}
+                        onClick={() =>
+                          handleReportStatusChange(report.id, REPORT_STATUS.RESOLVED)
+                        }
                       >
                         Resolve
                       </button>
                       <button
                         type="button"
                         className="btn-secondary"
-                        onClick={async () => {
-                          const result = await updateReportStatus({
-                            actor: user,
-                            reportId: report.id,
-                            status: REPORT_STATUS.REJECTED,
-                          });
-                          if (!result.ok) {
-                            pushToast({
-                              title: "Update failed",
-                              message: result.error?.message || "Try again.",
-                              tone: "warning",
-                            });
-                          }
-                        }}
+                        onClick={() =>
+                          handleReportStatusChange(report.id, REPORT_STATUS.REJECTED)
+                        }
                       >
                         Reject
                       </button>
@@ -425,7 +475,8 @@ const AdminCommunityModerationPage = () => {
               Save blocked words
             </button>
           </section>
-        </section>
+          </section>
+        </RenderProfiler>
       </div>
     </section>
   );

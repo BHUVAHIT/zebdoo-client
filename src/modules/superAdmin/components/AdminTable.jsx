@@ -1,5 +1,11 @@
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import TableCell from "./TableCell";
+import { expandRowsForSyntheticLoad } from "../../../shared/utils/syntheticLoad";
+import {
+  logVirtualizationTuning,
+  resolveVirtualizationTuning,
+} from "../../../shared/utils/virtualizationTuning";
 
 const TABLE_ROW_HEIGHT_CLASS = "h-14";
 
@@ -32,13 +38,105 @@ const AdminTable = ({
   onSort,
   emptyMessage = "No records found.",
 }) => {
-  if (!rows.length) {
+  const scrollRef = useRef(null);
+  const virtualizationConfig = useMemo(
+    () => resolveVirtualizationTuning({ scope: "table" }),
+    []
+  );
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(
+    virtualizationConfig.defaultViewportHeight
+  );
+
+  const effectiveRows = useMemo(
+    () => expandRowsForSyntheticLoad(rows, { rowKey }),
+    [rowKey, rows]
+  );
+
+  useEffect(() => {
+    logVirtualizationTuning({
+      scope: "table",
+      config: virtualizationConfig,
+      enabled: true,
+    });
+  }, [virtualizationConfig]);
+
+  const shouldVirtualize = effectiveRows.length >= virtualizationConfig.threshold;
+
+  useEffect(() => {
+    if (!shouldVirtualize) return;
+
+    const node = scrollRef.current;
+    if (!node) {
+      return;
+    }
+
+    const updateViewport = () => {
+      setViewportHeight(node.clientHeight || virtualizationConfig.defaultViewportHeight);
+    };
+
+    updateViewport();
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(updateViewport);
+      resizeObserver.observe(node);
+    }
+
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      resizeObserver?.disconnect?.();
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, [shouldVirtualize, virtualizationConfig.defaultViewportHeight]);
+
+  const virtualWindow = useMemo(() => {
+    if (!shouldVirtualize) {
+      return {
+        visibleRows: effectiveRows,
+        topSpacerHeight: 0,
+        bottomSpacerHeight: 0,
+      };
+    }
+
+    const estimatedRowHeight = virtualizationConfig.estimatedItemHeight;
+    const overscanRows = virtualizationConfig.overscan;
+    const startIndex = Math.max(Math.floor(scrollTop / estimatedRowHeight) - overscanRows, 0);
+    const visibleCount =
+      Math.ceil(viewportHeight / estimatedRowHeight) + overscanRows * 2;
+    const endIndex = Math.min(startIndex + visibleCount, effectiveRows.length);
+
+    return {
+      visibleRows: effectiveRows.slice(startIndex, endIndex),
+      topSpacerHeight: startIndex * estimatedRowHeight,
+      bottomSpacerHeight: Math.max((effectiveRows.length - endIndex) * estimatedRowHeight, 0),
+    };
+  }, [effectiveRows, scrollTop, shouldVirtualize, viewportHeight, virtualizationConfig]);
+
+  if (!effectiveRows.length) {
     return <p className="sa-status sa-status--empty">{emptyMessage}</p>;
   }
 
   return (
     <div className="sa-table-shell">
-      <div className="sa-table-scroll">
+      <div
+        ref={scrollRef}
+        className="sa-table-scroll"
+        onScroll={
+          shouldVirtualize
+            ? (event) => {
+                setScrollTop(event.currentTarget.scrollTop || 0);
+              }
+            : undefined
+        }
+        style={
+          shouldVirtualize
+            ? {
+                maxHeight: `${virtualizationConfig.defaultViewportHeight}px`,
+              }
+            : undefined
+        }
+      >
         <table className="sa-admin-table">
           <thead>
             <tr>
@@ -78,7 +176,13 @@ const AdminTable = ({
           </thead>
 
           <tbody>
-            {rows.map((row, index) => {
+            {virtualWindow.topSpacerHeight > 0 ? (
+              <tr aria-hidden="true">
+                <td colSpan={columns.length} style={{ height: `${virtualWindow.topSpacerHeight}px`, padding: 0, border: 0 }} />
+              </tr>
+            ) : null}
+
+            {virtualWindow.visibleRows.map((row, index) => {
               const computedRowKey = row?.[rowKey] ?? `${rowKey}-${index}`;
 
               return (
@@ -115,6 +219,15 @@ const AdminTable = ({
                 </tr>
               );
             })}
+
+            {virtualWindow.bottomSpacerHeight > 0 ? (
+              <tr aria-hidden="true">
+                <td
+                  colSpan={columns.length}
+                  style={{ height: `${virtualWindow.bottomSpacerHeight}px`, padding: 0, border: 0 }}
+                />
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -122,4 +235,4 @@ const AdminTable = ({
   );
 };
 
-export default AdminTable;
+export default memo(AdminTable);

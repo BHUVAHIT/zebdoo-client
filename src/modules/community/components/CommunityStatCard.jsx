@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const CommunityStatCard = ({ label, value, tone = "neutral" }) => {
   return (
     <article className={`community-card community-stat-card tone-${tone}`}>
@@ -7,4 +9,4 @@ const CommunityStatCard = ({ label, value, tone = "neutral" }) => {
   );
 };
 
-export default CommunityStatCard;
+export default memo(CommunityStatCard);

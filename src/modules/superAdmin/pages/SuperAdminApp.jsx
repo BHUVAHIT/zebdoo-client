@@ -1,13 +1,12 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { Users, BookOpen, Layers, FileText, HelpCircle } from "lucide-react";
 import SuperAdminLayout from "../components/SuperAdminLayout";
-import DashboardStats from "../components/DashboardStats";
-import { adminDashboardService } from "../../shared/services/adminDashboard.service";
+import { requestSuperAdminMetricsRefresh } from "../components/metricsRefreshChannel";
 import { ROUTES } from "../../../routes/routePaths";
 import RouteLoadingScreen from "../../../components/RouteLoadingScreen";
 import "../superAdmin.css";
 
+const SuperAdminMetricsRail = lazy(() => import("../components/SuperAdminMetricsRail"));
 const AdminDashboardPage = lazy(() => import("../../admin/dashboard/pages/AdminDashboardPage"));
 const AdminQaChecklistPage = lazy(() =>
   import("../../admin/dashboard/pages/AdminQaChecklistPage")
@@ -40,58 +39,11 @@ const AdminCommunityModerationPage = lazy(() =>
 );
 
 const SuperAdminApp = () => {
-  const [metricsLoading, setMetricsLoading] = useState(true);
-  const [metrics, setMetrics] = useState({
-    students: 0,
-    subjects: 0,
-    chapters: 0,
-    tests: 0,
-    questions: 0,
-  });
-
-  const refreshMetrics = useCallback(async () => {
-    setMetricsLoading(true);
-    try {
-      const next = await adminDashboardService.getMetrics();
-      setMetrics(next);
-    } finally {
-      setMetricsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    setMetricsLoading(true);
-
-    adminDashboardService
-      .getMetrics()
-      .then((next) => {
-        if (active) {
-          setMetrics(next);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setMetricsLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const metricConfig = [
-    { label: "Students", key: "students", icon: Users, color: "bg-slate-50" },
-    { label: "Subjects", key: "subjects", icon: BookOpen, color: "bg-teal-50" },
-    { label: "Chapters", key: "chapters", icon: Layers, color: "bg-emerald-50" },
-    { label: "Tests", key: "tests", icon: FileText, color: "bg-cyan-50" },
-    { label: "Questions", key: "questions", icon: HelpCircle, color: "bg-slate-100" },
-  ];
-
   return (
     <SuperAdminLayout>
-      <DashboardStats loading={metricsLoading} metrics={metrics} metricConfig={metricConfig} />
+      <Suspense fallback={<div className="sa-stats-panel" aria-hidden="true" />}>
+        <SuperAdminMetricsRail />
+      </Suspense>
 
       <Suspense
         fallback={
@@ -107,17 +59,20 @@ const SuperAdminApp = () => {
           <Route path="qa-checklist" element={<AdminQaChecklistPage />} />
           <Route
             path="students"
-            element={<StudentsManagementPage onDataChange={refreshMetrics} />}
+            element={<StudentsManagementPage onDataChange={requestSuperAdminMetricsRefresh} />}
           />
           <Route
             path="subjects"
-            element={<SubjectsManagementPage onDataChange={refreshMetrics} />}
+            element={<SubjectsManagementPage onDataChange={requestSuperAdminMetricsRefresh} />}
           />
           <Route
             path="chapters"
-            element={<ChaptersManagementPage onDataChange={refreshMetrics} />}
+            element={<ChaptersManagementPage onDataChange={requestSuperAdminMetricsRefresh} />}
           />
-          <Route path="tests" element={<TestsManagementPage onDataChange={refreshMetrics} />} />
+          <Route
+            path="tests"
+            element={<TestsManagementPage onDataChange={requestSuperAdminMetricsRefresh} />}
+          />
           <Route path="test-papers" element={<ManageTestPapersPage />} />
           <Route path="test-papers/create" element={<AddEditTestPaperForm />} />
           <Route path="test-papers/edit/:id" element={<AddEditTestPaperForm />} />
@@ -126,7 +81,7 @@ const SuperAdminApp = () => {
           <Route path="community/moderation" element={<AdminCommunityModerationPage />} />
           <Route
             path="questions"
-            element={<QuestionsManagementPage onDataChange={refreshMetrics} />}
+            element={<QuestionsManagementPage onDataChange={requestSuperAdminMetricsRefresh} />}
           />
           <Route path="*" element={<Navigate to={ROUTES.admin.dashboard} replace />} />
         </Routes>

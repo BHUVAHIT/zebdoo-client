@@ -1,3 +1,5 @@
+import { memo, useMemo } from "react";
+
 const ChannelSidebar = ({
   channels,
   selectedChannelId,
@@ -7,14 +9,18 @@ const ChannelSidebar = ({
   onToggleEnabled,
   onToggleReadOnly,
 }) => {
-  const groupedChannels = channels.reduce((acc, channel) => {
-    const key = channel.category || "General";
-    if (!acc[key]) {
-      acc[key] = [];
-    }
-    acc[key].push(channel);
-    return acc;
-  }, {});
+  const groupedChannels = useMemo(
+    () =>
+      channels.reduce((acc, channel) => {
+        const key = channel.category || "General";
+        if (!acc[key]) {
+          acc[key] = [];
+        }
+        acc[key].push(channel);
+        return acc;
+      }, {}),
+    [channels]
+  );
 
   return (
     <aside className="community-card community-channel-sidebar" aria-label="Community channels">
@@ -86,4 +92,4 @@ const ChannelSidebar = ({
   );
 };
 
-export default ChannelSidebar;
+export default memo(ChannelSidebar);

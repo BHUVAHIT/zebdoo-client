@@ -31,7 +31,21 @@ const delay = (ms, signal) =>
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 
-const clone = (value) => JSON.parse(JSON.stringify(value));
+export const deepClone = (value) => {
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+};
 
 const randomMs = (min, max) => {
   if (max <= min) return min;
@@ -82,5 +96,6 @@ export const withMockLatency = async (resolver, options = {}) => {
     throw createAbortError();
   }
 
-  return clone(resolver());
+  const resolved = resolver();
+  return deepClone(resolved);
 };

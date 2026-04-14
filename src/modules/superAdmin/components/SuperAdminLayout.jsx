@@ -1,7 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ChevronDown, ChevronLeft, ChevronRight, Menu, X } from "lucide-react";
 import { ROUTES } from "../../../routes/routePaths";
+import {
+  PREFETCH_PRIORITY,
+  prefetchRouteByPath,
+  scheduleIdlePrefetch,
+} from "../../../routes/routePrefetch";
 import { useAppToast } from "../../../components/notifications/useAppToast";
 import SidebarLogout from "../../../components/SidebarLogout";
 import useAuth from "../../../hooks/useAuth";
@@ -37,6 +42,7 @@ const SuperAdminLayout = ({ children }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef(null);
   const contentScrollRef = useRef(null);
+  const prefetchedRouteSetRef = useRef(new Set());
 
   const activeSection =
     NAV_ITEMS.find((item) => location.pathname.startsWith(item.to))?.label || "Dashboard";
@@ -57,6 +63,31 @@ const SuperAdminLayout = ({ children }) => {
 
     return parts.map((part) => part[0]?.toUpperCase() || "").join("");
   }, [userName]);
+
+  const supportsFinePointer = useMemo(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return true;
+    }
+
+    return window.matchMedia("(pointer: fine)").matches;
+  }, []);
+
+  const prefetchNavigationRoute = useCallback((to) => {
+    if (!supportsFinePointer) {
+      return;
+    }
+
+    const normalizedPath = String(to || "");
+    if (!normalizedPath || prefetchedRouteSetRef.current.has(normalizedPath)) {
+      return;
+    }
+
+    prefetchedRouteSetRef.current.add(normalizedPath);
+
+    scheduleIdlePrefetch(() => {
+      prefetchRouteByPath(to, { priority: PREFETCH_PRIORITY.HIGH });
+    }, 220);
+  }, [supportsFinePointer]);
 
   useEffect(() => {
     if (!mobileOpen && !profileMenuOpen) {
@@ -173,6 +204,8 @@ const SuperAdminLayout = ({ children }) => {
               key={item.to}
               to={item.to}
               className={({ isActive }) => `sa-nav__link ${isActive ? "is-active" : ""}`}
+              onMouseEnter={() => prefetchNavigationRoute(item.to)}
+              onFocus={() => prefetchNavigationRoute(item.to)}
               onClick={() => {
                 setMobileOpen(false);
                 setProfileMenuOpen(false);

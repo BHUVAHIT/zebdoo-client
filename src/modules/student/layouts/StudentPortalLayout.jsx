@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { routeBuilders, ROUTES } from "../../../routes/routePaths";
+import {
+  PREFETCH_PRIORITY,
+  prefetchRouteByPath,
+  scheduleIdlePrefetch,
+} from "../../../routes/routePrefetch";
 import SidebarLogout from "../../../components/SidebarLogout";
 import useAuth from "../../../hooks/useAuth";
 import {
@@ -60,9 +65,17 @@ const StudentPortalLayout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const prefetchedRouteSetRef = useRef(new Set());
 
   const breadcrumbs = useMemo(() => buildBreadcrumbs(location.pathname), [location.pathname]);
   const studentProfile = useMemo(() => getStudentProfile(user), [user]);
+  const supportsFinePointer = useMemo(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return true;
+    }
+
+    return window.matchMedia("(pointer: fine)").matches;
+  }, []);
 
   const closeSidebar = useCallback(() => {
     setIsSidebarOpen(false);
@@ -75,6 +88,23 @@ const StudentPortalLayout = ({ children }) => {
   const toggleProfileMenu = useCallback(() => {
     setIsProfileMenuOpen((prev) => !prev);
   }, []);
+
+  const prefetchNavigationRoute = useCallback((to) => {
+    if (!supportsFinePointer) {
+      return;
+    }
+
+    const normalizedPath = String(to || "");
+    if (!normalizedPath || prefetchedRouteSetRef.current.has(normalizedPath)) {
+      return;
+    }
+
+    prefetchedRouteSetRef.current.add(normalizedPath);
+
+    scheduleIdlePrefetch(() => {
+      prefetchRouteByPath(to, { priority: PREFETCH_PRIORITY.HIGH });
+    }, 240);
+  }, [supportsFinePointer]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -142,6 +172,8 @@ const StudentPortalLayout = ({ children }) => {
               className={({ isActive }) =>
                 `student-portal-sidebar__link ${isActive ? "is-active" : ""}`
               }
+              onMouseEnter={() => prefetchNavigationRoute(item.to)}
+              onFocus={() => prefetchNavigationRoute(item.to)}
               onClick={closeSidebar}
             >
               {item.label}

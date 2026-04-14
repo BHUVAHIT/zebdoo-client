@@ -7,6 +7,48 @@ const USER_KEY = 'user';
 const SESSION_EXPIRY_KEY = 'sessionExpiry';
 const DEFAULT_SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 
+const canUseWebStorage = () => typeof window !== 'undefined';
+
+const readLocalStorage = (key) => {
+  if (!canUseWebStorage()) return null;
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeLocalStorage = (key, value) => {
+  if (!canUseWebStorage()) return;
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore persistence errors and keep in-memory state active.
+  }
+};
+
+const removeLocalStorage = (key) => {
+  if (!canUseWebStorage()) return;
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage removal failures.
+  }
+};
+
+const removeSessionStorage = (key) => {
+  if (!canUseWebStorage()) return;
+
+  try {
+    window.sessionStorage.removeItem(key);
+  } catch {
+    // Ignore storage removal failures.
+  }
+};
+
 const normalizeUserRole = (user) => {
   if (!user || typeof user !== 'object') {
     return user ?? null;
@@ -31,15 +73,15 @@ export const AUTH_STORAGE_KEYS = Object.freeze({
 });
 
 const clearSessionStorage = () => {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-  localStorage.removeItem(USER_KEY);
-  localStorage.removeItem(SESSION_EXPIRY_KEY);
+  removeLocalStorage(ACCESS_TOKEN_KEY);
+  removeLocalStorage(REFRESH_TOKEN_KEY);
+  removeLocalStorage(USER_KEY);
+  removeLocalStorage(SESSION_EXPIRY_KEY);
 
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY);
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY);
-  sessionStorage.removeItem(USER_KEY);
-  sessionStorage.removeItem(SESSION_EXPIRY_KEY);
+  removeSessionStorage(ACCESS_TOKEN_KEY);
+  removeSessionStorage(REFRESH_TOKEN_KEY);
+  removeSessionStorage(USER_KEY);
+  removeSessionStorage(SESSION_EXPIRY_KEY);
 };
 
 export const useAuthStore = create((set, get) => ({
@@ -60,14 +102,14 @@ export const useAuthStore = create((set, get) => ({
       throw new Error('Unable to start session for an unknown role.');
     }
 
-    localStorage.setItem(ACCESS_TOKEN_KEY, token);
+    writeLocalStorage(ACCESS_TOKEN_KEY, token);
     if (refreshToken) {
-      localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+      writeLocalStorage(REFRESH_TOKEN_KEY, refreshToken);
     } else {
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      removeLocalStorage(REFRESH_TOKEN_KEY);
     }
-    localStorage.setItem(USER_KEY, JSON.stringify(normalizedUser));
-    localStorage.setItem(SESSION_EXPIRY_KEY, String(sessionExpiresAt));
+    writeLocalStorage(USER_KEY, JSON.stringify(normalizedUser));
+    writeLocalStorage(SESSION_EXPIRY_KEY, String(sessionExpiresAt));
 
     set({ user: normalizedUser, token, refreshToken: refreshToken || null, sessionExpiresAt });
   },
@@ -86,7 +128,7 @@ export const useAuthStore = create((set, get) => ({
         ...updates,
       });
 
-      localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      writeLocalStorage(USER_KEY, JSON.stringify(nextUser));
 
       return {
         ...state,
@@ -111,10 +153,10 @@ export const useAuthStore = create((set, get) => ({
       });
     };
 
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-    const user = localStorage.getItem(USER_KEY);
-    const sessionExpiryRaw = localStorage.getItem(SESSION_EXPIRY_KEY);
+    const token = readLocalStorage(ACCESS_TOKEN_KEY);
+    const refreshToken = readLocalStorage(REFRESH_TOKEN_KEY);
+    const user = readLocalStorage(USER_KEY);
+    const sessionExpiryRaw = readLocalStorage(SESSION_EXPIRY_KEY);
     const sessionExpiresAt = Number(sessionExpiryRaw || 0);
 
     if (!token || !user || !sessionExpiresAt) {

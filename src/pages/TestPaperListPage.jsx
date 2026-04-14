@@ -40,6 +40,8 @@ const TestPaperListPage = () => {
   const { subjectId, mode, chapterId } = useParams();
   const isMountedRef = useRef(true);
   const loadRequestIdRef = useRef(0);
+  const activeRequestRef = useRef(null);
+  const syncReloadTimeoutRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -108,6 +110,9 @@ const TestPaperListPage = () => {
 
   const loadPapers = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
 
     if (!subjectId) {
       navigate(routeBuilders.testPapers.root, { replace: true });
@@ -132,6 +137,8 @@ const TestPaperListPage = () => {
         subjectId,
         mode: effectiveMode,
         chapterId: effectiveChapterId,
+      }, {
+        signal: controller.signal,
       });
 
       if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
@@ -164,6 +171,10 @@ const TestPaperListPage = () => {
       setPapers(response.papers);
       setChapters(response.chapters);
     } catch (loadError) {
+      if (loadError?.name === "AbortError") {
+        return;
+      }
+
       if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
         return;
       }
@@ -180,6 +191,10 @@ const TestPaperListPage = () => {
       if (isMountedRef.current && requestId === loadRequestIdRef.current) {
         setLoading(false);
       }
+
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
     }
   }, [chapterId, effectiveChapterId, effectiveMode, navigate, subjectId]);
 
@@ -189,6 +204,12 @@ const TestPaperListPage = () => {
     return () => {
       isMountedRef.current = false;
       loadRequestIdRef.current += 1;
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+        syncReloadTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -196,11 +217,22 @@ const TestPaperListPage = () => {
     loadPapers();
 
     const unsubscribe = testPaperService.subscribeToChanges(() => {
-      loadPapers();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+      }
+
+      syncReloadTimeoutRef.current = window.setTimeout(() => {
+        syncReloadTimeoutRef.current = null;
+        loadPapers();
+      }, 60);
     });
 
     return () => {
       unsubscribe?.();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+        syncReloadTimeoutRef.current = null;
+      }
     };
   }, [loadPapers]);
 
@@ -310,6 +342,7 @@ const TestPaperListPage = () => {
 
   const openPaper = (paper) => {
     if (typeof window === "undefined") return;
+    if (!paper?.pdfUrl) return;
     window.open(paper.pdfUrl, "_blank", "noopener,noreferrer");
   };
 

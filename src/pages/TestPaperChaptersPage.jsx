@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowLeft, Layers3, Search } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import ChapterCard from "../components/ChapterCard";
@@ -16,6 +16,10 @@ import "./testPapers.css";
 const TestPaperChaptersPage = () => {
   const navigate = useNavigate();
   const { subjectId } = useParams();
+  const isMountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  const activeRequestRef = useRef(null);
+  const syncReloadTimeoutRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,6 +28,12 @@ const TestPaperChaptersPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   const loadContext = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+
     if (!subjectId) {
       navigate(routeBuilders.testPapers.root, { replace: true });
       return;
@@ -33,10 +43,25 @@ const TestPaperChaptersPage = () => {
     setError("");
 
     try {
-      const response = await testPaperService.getSubjectContext(subjectId);
+      const response = await testPaperService.getSubjectContext(subjectId, {
+        signal: controller.signal,
+      });
+
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
+        return;
+      }
+
       setSubject(response.subject);
       setChapters(response.chapters);
     } catch (loadError) {
+      if (loadError?.name === "AbortError") {
+        return;
+      }
+
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
+        return;
+      }
+
       const errorMessage = loadError?.message || "Unable to load chapters.";
 
       if (/subject/i.test(errorMessage) && /not available/i.test(errorMessage)) {
@@ -46,19 +71,41 @@ const TestPaperChaptersPage = () => {
 
       setError(errorMessage);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestIdRef.current === requestId) {
+        setLoading(false);
+      }
+
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
     }
   }, [navigate, subjectId]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadContext();
 
     const unsubscribe = testPaperService.subscribeToChanges(() => {
-      loadContext();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+      }
+
+      syncReloadTimeoutRef.current = window.setTimeout(() => {
+        syncReloadTimeoutRef.current = null;
+        loadContext();
+      }, 60);
     });
 
     return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
       unsubscribe?.();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+        syncReloadTimeoutRef.current = null;
+      }
     };
   }, [loadContext]);
 

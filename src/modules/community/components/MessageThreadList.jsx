@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bookmark,
@@ -17,6 +17,14 @@ import {
   formatRoleBadge,
   renderCommunityMarkdown,
 } from "../utils/communityMarkdown";
+import {
+  expandMessagesForSyntheticLoad,
+  isSyntheticLoadEnabled,
+} from "../../../shared/utils/syntheticLoad";
+import {
+  logVirtualizationTuning,
+  resolveVirtualizationTuning,
+} from "../../../shared/utils/virtualizationTuning";
 
 const PAGE_SIZE = 10;
 const noop = () => {};
@@ -190,11 +198,100 @@ const MessageThreadList = ({
   onBanUser = null,
   pageSize = PAGE_SIZE,
 }) => {
+  const scrollRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
   const [page, setPage] = useState(1);
-  const visibleCount = page * pageSize;
+  const syntheticLoadEnabled = isSyntheticLoadEnabled();
+  const virtualizationConfig = useMemo(
+    () => resolveVirtualizationTuning({ scope: "thread", syntheticLoadEnabled }),
+    [syntheticLoadEnabled]
+  );
+  const [viewportHeight, setViewportHeight] = useState(
+    virtualizationConfig.defaultViewportHeight
+  );
+  const effectivePageSize = syntheticLoadEnabled ? Math.max(pageSize, 240) : pageSize;
 
-  const visibleMessages = useMemo(() => messages.slice(0, visibleCount), [messages, visibleCount]);
-  const hasMore = messages.length > visibleCount;
+  useEffect(() => {
+    logVirtualizationTuning({
+      scope: "thread",
+      config: virtualizationConfig,
+      enabled: true,
+    });
+  }, [virtualizationConfig]);
+
+  const effectiveMessages = useMemo(
+    () => expandMessagesForSyntheticLoad(messages),
+    [messages]
+  );
+
+  const visibleCount = page * effectivePageSize;
+
+  const visibleMessages = useMemo(
+    () => effectiveMessages.slice(0, visibleCount),
+    [effectiveMessages, visibleCount]
+  );
+  const hasMore = effectiveMessages.length > visibleCount;
+
+  const shouldVirtualize = visibleMessages.length >= virtualizationConfig.threshold;
+
+  useEffect(() => {
+    if (!shouldVirtualize) {
+      return;
+    }
+
+    const node = scrollRef.current;
+    if (!node) {
+      return;
+    }
+
+    const updateViewport = () => {
+      setViewportHeight(node.clientHeight || virtualizationConfig.defaultViewportHeight);
+    };
+
+    updateViewport();
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(updateViewport);
+      resizeObserver.observe(node);
+    }
+
+    window.addEventListener("resize", updateViewport);
+    return () => {
+      resizeObserver?.disconnect?.();
+      window.removeEventListener("resize", updateViewport);
+    };
+  }, [shouldVirtualize, virtualizationConfig.defaultViewportHeight]);
+
+  const virtualWindow = useMemo(() => {
+    if (!shouldVirtualize) {
+      return {
+        visibleRows: visibleMessages,
+        topSpacerHeight: 0,
+        bottomSpacerHeight: 0,
+      };
+    }
+
+    const estimatedHeight = virtualizationConfig.estimatedItemHeight;
+    const overscanMessages = virtualizationConfig.overscan;
+
+    const startIndex = Math.max(
+      Math.floor(scrollTop / estimatedHeight) - overscanMessages,
+      0
+    );
+    const visibleCountWithinViewport =
+      Math.ceil(viewportHeight / estimatedHeight) + overscanMessages * 2;
+    const endIndex = Math.min(startIndex + visibleCountWithinViewport, visibleMessages.length);
+
+    return {
+      visibleRows: visibleMessages.slice(startIndex, endIndex),
+      topSpacerHeight: startIndex * estimatedHeight,
+      bottomSpacerHeight: Math.max(
+        (visibleMessages.length - endIndex) * estimatedHeight,
+        0
+      ),
+    };
+  }, [scrollTop, shouldVirtualize, viewportHeight, visibleMessages, virtualizationConfig]);
 
   if (loading) {
     return (
@@ -206,7 +303,7 @@ const MessageThreadList = ({
     );
   }
 
-  if (!messages.length) {
+  if (!effectiveMessages.length) {
     return (
       <section className="community-card community-empty-state">
         <h3>No messages yet</h3>
@@ -216,8 +313,30 @@ const MessageThreadList = ({
   }
 
   return (
-    <section className="community-message-list">
-      {visibleMessages.map((message) => (
+    <section
+      ref={scrollRef}
+      className="community-message-list"
+      onScroll={
+        shouldVirtualize
+          ? (event) => {
+              setScrollTop(event.currentTarget.scrollTop || 0);
+            }
+          : undefined
+      }
+      style={
+        shouldVirtualize
+          ? {
+              maxHeight: `${virtualizationConfig.defaultViewportHeight}px`,
+              overflowY: "auto",
+            }
+          : undefined
+      }
+    >
+      {virtualWindow.topSpacerHeight > 0 ? (
+        <div aria-hidden="true" style={{ height: `${virtualWindow.topSpacerHeight}px` }} />
+      ) : null}
+
+      {virtualWindow.visibleRows.map((message) => (
         <MessageNode
           key={message.id}
           message={message}
@@ -234,6 +353,10 @@ const MessageThreadList = ({
         />
       ))}
 
+      {virtualWindow.bottomSpacerHeight > 0 ? (
+        <div aria-hidden="true" style={{ height: `${virtualWindow.bottomSpacerHeight}px` }} />
+      ) : null}
+
       {hasMore ? (
         <div className="community-pagination-row">
           <button type="button" className="btn-secondary" onClick={() => setPage((prev) => prev + 1)}>
@@ -245,4 +368,4 @@ const MessageThreadList = ({
   );
 };
 
-export default MessageThreadList;
+export default memo(MessageThreadList);

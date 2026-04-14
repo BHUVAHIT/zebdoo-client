@@ -25,6 +25,10 @@ const ManageTestPapersPage = () => {
   const { pushToast } = useAppToast();
   const isMountedRef = useRef(true);
   const loadRequestIdRef = useRef(0);
+  const activeListRequestRef = useRef(null);
+  const activeOptionsRequestRef = useRef(null);
+  const optionsLoadedRef = useRef(false);
+  const syncReloadTimeoutRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [items, setItems] = useState([]);
@@ -39,28 +43,37 @@ const ManageTestPapersPage = () => {
 
   const loadData = useCallback(async () => {
     const requestId = ++loadRequestIdRef.current;
+    activeListRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeListRequestRef.current = controller;
+
     setLoading(true);
     setError("");
 
     try {
-      const [papersResponse, optionsResponse] = await Promise.all([
-        testPaperService.listPapersForAdmin({
+      const papersResponse = await testPaperService.listPapersForAdmin(
+        {
           search: filters.search,
           subjectId: filters.subjectId,
           scope: filters.scope,
           paperType: filters.paperType,
           year: filters.year,
-        }),
-        testPaperService.getFormOptions(),
-      ]);
+        },
+        {
+          signal: controller.signal,
+        }
+      );
 
       if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
         return;
       }
 
       setItems(papersResponse.items || []);
-      setFormOptions({ subjects: optionsResponse.subjects || [] });
     } catch (loadError) {
+      if (loadError?.name === "AbortError") {
+        return;
+      }
+
       if (!isMountedRef.current || requestId !== loadRequestIdRef.current) {
         return;
       }
@@ -70,8 +83,49 @@ const ManageTestPapersPage = () => {
       if (isMountedRef.current && requestId === loadRequestIdRef.current) {
         setLoading(false);
       }
+
+      if (activeListRequestRef.current === controller) {
+        activeListRequestRef.current = null;
+      }
     }
   }, [filters]);
+
+  const loadOptions = useCallback(async ({ force = false } = {}) => {
+    if (optionsLoadedRef.current && !force) {
+      return;
+    }
+
+    activeOptionsRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeOptionsRequestRef.current = controller;
+
+    try {
+      const optionsResponse = await testPaperService.getFormOptions({
+        signal: controller.signal,
+      });
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      optionsLoadedRef.current = true;
+      setFormOptions({ subjects: optionsResponse.subjects || [] });
+    } catch (loadError) {
+      if (loadError?.name === "AbortError") {
+        return;
+      }
+
+      if (!isMountedRef.current) {
+        return;
+      }
+
+      setError((prev) => prev || loadError?.message || "Unable to load filter options.");
+    } finally {
+      if (activeOptionsRequestRef.current === controller) {
+        activeOptionsRequestRef.current = null;
+      }
+    }
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -79,20 +133,41 @@ const ManageTestPapersPage = () => {
     return () => {
       isMountedRef.current = false;
       loadRequestIdRef.current += 1;
+      activeListRequestRef.current?.abort();
+      activeListRequestRef.current = null;
+      activeOptionsRequestRef.current?.abort();
+      activeOptionsRequestRef.current = null;
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+        syncReloadTimeoutRef.current = null;
+      }
     };
   }, []);
 
   useEffect(() => {
+    loadOptions();
     loadData();
 
     const unsubscribe = testPaperService.subscribeToChanges(() => {
-      loadData();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+      }
+
+      syncReloadTimeoutRef.current = window.setTimeout(() => {
+        syncReloadTimeoutRef.current = null;
+        loadOptions({ force: true });
+        loadData();
+      }, 60);
     });
 
     return () => {
       unsubscribe?.();
+      if (syncReloadTimeoutRef.current) {
+        window.clearTimeout(syncReloadTimeoutRef.current);
+        syncReloadTimeoutRef.current = null;
+      }
     };
-  }, [loadData]);
+  }, [loadData, loadOptions]);
 
   const uniqueYears = useMemo(() => {
     const years = new Set(
@@ -129,7 +204,6 @@ const ManageTestPapersPage = () => {
         tone: "success",
       });
       setDeleteTarget(null);
-      loadData();
     } catch (deleteError) {
       pushToast({
         title: "Delete failed",

@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const TableCell = ({ content, isActions, maxWidth, title }) => {
   return (
     <div
@@ -10,4 +12,4 @@ const TableCell = ({ content, isActions, maxWidth, title }) => {
   );
 };
 
-export default TableCell;
+export default memo(TableCell);

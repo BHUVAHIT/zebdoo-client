@@ -16,6 +16,11 @@ import {
   routeBuilders,
 } from "./routePaths";
 import {
+  prefetchLikelyRoutes,
+  prefetchRoleCriticalRoutes,
+  scheduleIdlePrefetch,
+} from "./routePrefetch";
+import {
   StudentProtectedFrame,
   SuperAdminProtectedFrame,
 } from "./protected.routes";
@@ -54,6 +59,16 @@ const LegacyPrefixRedirect = ({ legacyPrefix, targetPrefix }) => {
   return <Navigate to={target} replace />;
 };
 
+const hasLocalStorageValue = (key) => {
+  if (typeof window === "undefined") return false;
+
+  try {
+    return Boolean(window.localStorage.getItem(key));
+  } catch {
+    return false;
+  }
+};
+
 const AppRoutes = () => {
   const loadUser = useAuthStore((state) => state.loadUser);
   const user = useAuthStore((state) => state.user);
@@ -63,12 +78,8 @@ const AppRoutes = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const hasStoredToken =
-    typeof window !== "undefined" &&
-    Boolean(window.localStorage.getItem(AUTH_STORAGE_KEYS.accessToken));
-  const hasStoredUser =
-    typeof window !== "undefined" &&
-    Boolean(window.localStorage.getItem(AUTH_STORAGE_KEYS.user));
+  const hasStoredToken = hasLocalStorageValue(AUTH_STORAGE_KEYS.accessToken);
+  const hasStoredUser = hasLocalStorageValue(AUTH_STORAGE_KEYS.user);
   const awaitingSessionRestore = !token && !user && hasStoredToken && hasStoredUser;
 
   useEffect(() => {
@@ -96,12 +107,53 @@ const AppRoutes = () => {
       return undefined;
     }
 
-    const intervalId = window.setInterval(() => {
+    let intervalId = null;
+
+    const syncSession = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return;
+      }
+
       loadUser();
-    }, 60 * 1000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        window.clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const startPolling = () => {
+      stopPolling();
+      intervalId = window.setInterval(() => {
+        syncSession();
+      }, 60 * 1000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncSession();
+        startPolling();
+        return;
+      }
+
+      stopPolling();
+    };
+
+    syncSession();
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("online", syncSession);
 
     return () => {
-      window.clearInterval(intervalId);
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("online", syncSession);
     };
   }, [loadUser, token]);
 
@@ -120,6 +172,25 @@ const AppRoutes = () => {
   useEffect(() => {
     setActiveRoute(`${location.pathname}${location.search}${location.hash}`);
   }, [location.hash, location.pathname, location.search, setActiveRoute]);
+
+  useEffect(() => {
+    const cancelIdlePrefetch = scheduleIdlePrefetch(() => {
+      prefetchRoleCriticalRoutes(user?.role);
+    }, 700);
+
+    return cancelIdlePrefetch;
+  }, [user?.role]);
+
+  useEffect(() => {
+    const cancelIdlePrefetch = scheduleIdlePrefetch(() => {
+      prefetchLikelyRoutes({
+        pathname: location.pathname,
+        role: user?.role,
+      });
+    }, 1000);
+
+    return cancelIdlePrefetch;
+  }, [location.pathname, user?.role]);
 
   if (awaitingSessionRestore) {
     return (

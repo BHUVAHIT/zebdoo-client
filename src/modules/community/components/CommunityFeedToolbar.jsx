@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import {
   COMMUNITY_FEED_FILTER_OPTIONS,
@@ -77,4 +78,4 @@ const CommunityFeedToolbar = ({
   );
 };
 
-export default CommunityFeedToolbar;
+export default memo(CommunityFeedToolbar);

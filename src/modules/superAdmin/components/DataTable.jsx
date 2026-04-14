@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { PAGE_SIZE_OPTIONS } from "../types/entities";
 import { useDebouncedValue } from "../../../shared/hooks/useDebouncedValue";
@@ -6,6 +6,7 @@ import {
   InlineLoadingNotice,
   TableSkeleton,
 } from "../../../components/loading/LoadingPrimitives";
+import RenderProfiler from "../../../components/performance/RenderProfiler";
 import AdminTable from "./AdminTable";
 import FiltersBar from "./FiltersBar";
 import ModernPagination from "./ModernPagination";
@@ -123,25 +124,29 @@ const DataTable = ({
 
         {!loading && !error ? (
           <>
-            <AdminTable
-              columns={columns}
-              rows={rows}
-              rowKey={rowKey}
-              sortBy={sortBy}
-              sortDir={sortDir}
-              onSort={onSort}
-              emptyMessage={emptyMessage}
-            />
+            <RenderProfiler id={`DataTable.${title}.Table`} thresholdMs={12}>
+              <AdminTable
+                columns={columns}
+                rows={rows}
+                rowKey={rowKey}
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={onSort}
+                emptyMessage={emptyMessage}
+              />
+            </RenderProfiler>
 
-            <ModernPagination
-              currentPage={page}
-              totalPages={totalPages}
-              pageSize={pageSize}
-              totalItems={total}
-              pageSizeOptions={PAGE_SIZE_OPTIONS}
-              onPageChange={onPageChange}
-              onPageSizeChange={onPageSizeChange}
-            />
+            <RenderProfiler id={`DataTable.${title}.Pagination`} thresholdMs={8}>
+              <ModernPagination
+                currentPage={page}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={total}
+                pageSizeOptions={PAGE_SIZE_OPTIONS}
+                onPageChange={onPageChange}
+                onPageSizeChange={onPageSizeChange}
+              />
+            </RenderProfiler>
           </>
         ) : null}
       </div>
@@ -149,4 +154,4 @@ const DataTable = ({
   );
 };
 
-export default DataTable;
+export default memo(DataTable);

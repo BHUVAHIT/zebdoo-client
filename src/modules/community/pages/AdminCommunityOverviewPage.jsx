@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Activity, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import RenderProfiler from "../../../components/performance/RenderProfiler";
 import { useAppToast } from "../../../components/notifications/useAppToast";
 import useAuth from "../../../hooks/useAuth";
 import { ROUTES } from "../../../routes/routePaths";
@@ -59,11 +60,18 @@ const AdminCommunityOverviewPage = () => {
     ];
   }, [overviewAnalytics]);
 
-  const visibleMessages = useMemo(() => {
-    const rows = [...messageTree];
+  const messagePools = useMemo(
+    () =>
+      messageTree.map((message) => ({
+        message,
+        pool: [message, ...flattenTree(message.replies || [])],
+      })),
+    [messageTree]
+  );
 
-    const filtered = rows.filter((message) => {
-      const pool = [message, ...flattenTree(message.replies || [])];
+  const visibleMessages = useMemo(() => {
+    const filtered = messagePools
+      .filter(({ message, pool }) => {
       const byQuery =
         !searchQuery ||
         pool.some((item) =>
@@ -80,7 +88,8 @@ const AdminCommunityOverviewPage = () => {
       }
 
       return byQuery && byTopic;
-    });
+      })
+      .map(({ message }) => message);
 
     if (feedFilter === "POPULAR") {
       return filtered.sort((a, b) => {
@@ -95,7 +104,49 @@ const AdminCommunityOverviewPage = () => {
     }
 
     return filtered;
-  }, [feedFilter, messageTree, searchQuery, selectedTopic]);
+  }, [feedFilter, messagePools, searchQuery, selectedTopic]);
+
+  const handleToggleChannelEnabled = useCallback(
+    async (channel) => {
+      const result = await updateChannel({
+        actor: user,
+        channelId: channel.id,
+        patch: { isEnabled: !channel.isEnabled },
+      });
+
+      if (!result.ok) {
+        pushToast({
+          title: "Update failed",
+          message: result.error?.message || "Could not change channel visibility.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, updateChannel, user]
+  );
+
+  const handleToggleChannelReadOnly = useCallback(
+    async (channel) => {
+      const result = await updateChannel({
+        actor: user,
+        channelId: channel.id,
+        patch: { isReadOnly: !channel.isReadOnly },
+      });
+
+      if (!result.ok) {
+        pushToast({
+          title: "Update failed",
+          message: result.error?.message || "Could not change channel access.",
+          tone: "warning",
+        });
+      }
+    },
+    [pushToast, updateChannel, user]
+  );
+
+  const handleOpenAnnouncements = useCallback(() => {
+    navigate(ROUTES.admin.communityAnnouncements);
+  }, [navigate]);
 
   useEffect(() => {
     if (!user) return;
@@ -136,48 +187,24 @@ const AdminCommunityOverviewPage = () => {
       </header>
 
       <div className="community-stats-grid">
-        {statCards.map((item) => (
-          <CommunityStatCard key={item.label} label={item.label} value={item.value} tone={item.tone} />
-        ))}
+        <RenderProfiler id="AdminCommunityOverview.StatCards" thresholdMs={8}>
+          {statCards.map((item) => (
+            <CommunityStatCard key={item.label} label={item.label} value={item.value} tone={item.tone} />
+          ))}
+        </RenderProfiler>
       </div>
 
       <div className="community-chat-grid admin-layout">
-        <ChannelSidebar
-          channels={channels}
-          selectedChannelId={selectedChannelId}
-          onSelect={setSelectedChannel}
-          showAdminControls
-          onToggleEnabled={async (channel) => {
-            const result = await updateChannel({
-              actor: user,
-              channelId: channel.id,
-              patch: { isEnabled: !channel.isEnabled },
-            });
-
-            if (!result.ok) {
-              pushToast({
-                title: "Update failed",
-                message: result.error?.message || "Could not change channel visibility.",
-                tone: "warning",
-              });
-            }
-          }}
-          onToggleReadOnly={async (channel) => {
-            const result = await updateChannel({
-              actor: user,
-              channelId: channel.id,
-              patch: { isReadOnly: !channel.isReadOnly },
-            });
-
-            if (!result.ok) {
-              pushToast({
-                title: "Update failed",
-                message: result.error?.message || "Could not change channel access.",
-                tone: "warning",
-              });
-            }
-          }}
-        />
+        <RenderProfiler id="AdminCommunityOverview.ChannelSidebar" thresholdMs={9}>
+          <ChannelSidebar
+            channels={channels}
+            selectedChannelId={selectedChannelId}
+            onSelect={setSelectedChannel}
+            showAdminControls
+            onToggleEnabled={handleToggleChannelEnabled}
+            onToggleReadOnly={handleToggleChannelReadOnly}
+          />
+        </RenderProfiler>
 
         <section className="community-chat-main">
           <CommunityFeedToolbar
@@ -203,25 +230,29 @@ const AdminCommunityOverviewPage = () => {
             </strong>
           </header>
 
-          <MessageThreadList
-            loading={loading.messages || loading.bootstrap}
-            messages={visibleMessages}
-            canModerate
-            onReply={() => {}}
-            onReact={() => {}}
-            onHelpful={() => {}}
-            onReport={() => {}}
-            onBookmark={() => {}}
-            onModerate={() => {}}
-          />
+          <RenderProfiler id="AdminCommunityOverview.MessageThreadList" thresholdMs={12}>
+            <MessageThreadList
+              loading={loading.messages || loading.bootstrap}
+              messages={visibleMessages}
+              canModerate
+              onReply={() => {}}
+              onReact={() => {}}
+              onHelpful={() => {}}
+              onReport={() => {}}
+              onBookmark={() => {}}
+              onModerate={() => {}}
+            />
+          </RenderProfiler>
         </section>
 
-        <CommunityInsightRail
-          activeUsers={activeUsers.slice(0, 6)}
-          trendingTopics={trendingTopics.slice(0, 6)}
-          announcements={announcementPreview}
-          onOpenAnnouncements={() => navigate(ROUTES.admin.communityAnnouncements)}
-        />
+        <RenderProfiler id="AdminCommunityOverview.InsightRail" thresholdMs={8}>
+          <CommunityInsightRail
+            activeUsers={activeUsers.slice(0, 6)}
+            trendingTopics={trendingTopics.slice(0, 6)}
+            announcements={announcementPreview}
+            onOpenAnnouncements={handleOpenAnnouncements}
+          />
+        </RenderProfiler>
       </div>
     </section>
   );

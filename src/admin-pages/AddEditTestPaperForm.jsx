@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   TEST_PAPER_SCOPES,
@@ -33,6 +33,9 @@ const AddEditTestPaperForm = () => {
   const { id } = useParams();
   const { pushToast } = useAppToast();
   const isEditMode = Boolean(id);
+  const isMountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+  const activeRequestRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -60,19 +63,38 @@ const AddEditTestPaperForm = () => {
   );
 
   const loadData = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    activeRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+
     setLoading(true);
     setError("");
 
     try {
-      const optionResponse = await testPaperService.getFormOptions();
-      setOptions(optionResponse);
+      const optionResponse = await testPaperService.getFormOptions({
+        signal: controller.signal,
+      });
 
-      if (!isEditMode) {
-        setLoading(false);
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
         return;
       }
 
-      const paper = await testPaperService.getPaperByIdForAdmin(id);
+      setOptions(optionResponse);
+
+      if (!isEditMode) {
+        return;
+      }
+
+      const paper = await testPaperService.getPaperByIdForAdmin(id, {
+        signal: controller.signal,
+      });
+
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
+        return;
+      }
+
       setForm({
         subjectId: paper.subjectId,
         chapterId: paper.chapterId || "",
@@ -86,14 +108,36 @@ const AddEditTestPaperForm = () => {
         pdfMimeType: paper.pdfMimeType || "application/pdf",
       });
     } catch (loadError) {
+      if (loadError?.name === "AbortError") {
+        return;
+      }
+
+      if (!isMountedRef.current || requestIdRef.current !== requestId) {
+        return;
+      }
+
       setError(loadError.message || "Unable to load form data.");
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestIdRef.current === requestId) {
+        setLoading(false);
+      }
+
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+      }
     }
   }, [id, isEditMode]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     loadData();
+
+    return () => {
+      isMountedRef.current = false;
+      requestIdRef.current += 1;
+      activeRequestRef.current?.abort();
+      activeRequestRef.current = null;
+    };
   }, [loadData]);
 
   useEffect(() => {
